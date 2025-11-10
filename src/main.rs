@@ -187,16 +187,12 @@ fn modify_dockerfile(
     port: u16,
     python_version: &str,
 ) -> String {
-    let mut result = template.to_string();
-    result = result.replacen("{}", base_image, 1);
-    result = result.replacen("{}", project_dir, 1);
-    result = result.replacen("{}", project_dir, 1);
-    result = result.replacen("{}", project_dir, 1);
-    result = result.replacen("{}", python_version, 1);
-    result = result.replacen("{}", project_dir, 1);
-    result = result.replacen("{}", &port.to_string(), 1);
-    result = result.replacen("{}", entrypoint, 1);
-    result
+    template
+        .replace("{BASE_IMAGE}", base_image)
+        .replace("{PROJECT_DIR}", project_dir)
+        .replace("{PYTHON_VERSION}", python_version)
+        .replace("{PORT}", &port.to_string())
+        .replace("{ENTRYPOINT}", entrypoint)
 }
 
 fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
