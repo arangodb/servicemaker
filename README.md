@@ -27,7 +27,8 @@ The binary will be available at `target/release/servicemaker`.
 servicemaker \
   --name myproject \
   --project-home /path/to/python/project \
-  --base-image python:3.14-slim-trixie \
+  --base-image debian:trixie-slim \
+  --python-version 3.14 \
   --port 8080 \
   --image-name myregistry/myproject:latest \
   --entrypoint main.py \
@@ -42,14 +43,15 @@ servicemaker
 
 ### Command-line Options
 
-- `--name` - Name of the project
-- `--project-home` - Path to the folder containing the Python project
-- `--base-image` - Base Docker image (default: `python:3.14-slim-trixie`)
-- `--port` - Exposed port number
-- `--image-name` - Docker image name to push
-- `--push` - Whether to push the image (default: false)
-- `--registry` - URL of the Docker registry (optional, default: Docker Hub)
-- `--entrypoint` - Name of the Python script to run (relative to project home)
+- `--name` - Name of the project (optional, will prompt if not provided)
+- `--project-home` - Path to the folder containing the Python project (optional, will prompt if not provided)
+- `--base-image` - Base Docker image (default: `debian:trixie-slim`)
+- `--port` - Exposed port number (optional, will prompt if not provided)
+- `--image-name` - Docker image name to push (optional, will prompt if not provided)
+- `--push` - Whether to push the image (default: `false`)
+- `--registry` - URL of the Docker registry (optional, no default)
+- `--entrypoint` - Name of the Python script to run relative to project home (optional, will prompt if not provided)
+- `--python-version` - Python version to use (default: `3.14`)
 
 ## How it Works
 
