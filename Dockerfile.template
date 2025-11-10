@@ -14,10 +14,11 @@ uv python install {}
 EOF
 
 WORKDIR /home/python/{}
-#RUN <<EOF
-#. /home/python/.local/bin/env
-#uv sync
-#EOF
+RUN <<EOF
+rm -rf .venv
+. /home/python/.local/bin/env
+uv sync
+EOF
 
 EXPOSE {}
 

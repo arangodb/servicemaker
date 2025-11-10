@@ -106,7 +106,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Create temporary directory
-    let temp_dir = std::env::temp_dir().join(format!("servicemaker-{}", name));
+    let temp_dir =
+        std::env::temp_dir().join(format!("servicemaker-{}-{}", name, std::process::id()));
     println!("Creating temporary directory: {}", temp_dir.display());
 
     if temp_dir.exists() {
@@ -191,8 +192,8 @@ fn modify_dockerfile(
     result = result.replacen("{}", project_dir, 1);
     result = result.replacen("{}", project_dir, 1);
     result = result.replacen("{}", project_dir, 1);
-    result = result.replacen("{}", project_dir, 1);
     result = result.replacen("{}", python_version, 1);
+    result = result.replacen("{}", project_dir, 1);
     result = result.replacen("{}", &port.to_string(), 1);
     result = result.replacen("{}", entrypoint, 1);
     result
