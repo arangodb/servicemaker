@@ -10,6 +10,7 @@ USER python
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
 WORKDIR /home/python/{PROJECT_DIR}
+ENV UV_HTTP_TIMEOUT 3600
 RUN <<EOF
 rm -rf .venv
 . /home/python/.local/bin/env
