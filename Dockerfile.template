@@ -8,10 +8,6 @@ RUN chown -R python: {PROJECT_DIR}
 
 USER python
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-RUN <<EOF
-. /home/python/.local/bin/env
-uv python install {PYTHON_VERSION}
-EOF
 
 WORKDIR /home/python/{PROJECT_DIR}
 RUN <<EOF

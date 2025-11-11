@@ -39,10 +39,6 @@ struct Args {
     /// Name of the Python script to run (relative to project home)
     #[arg(long)]
     entrypoint: Option<String>,
-
-    /// Python version to use
-    #[arg(long, default_value = "3.14")]
-    python_version: String,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -93,7 +89,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Port: {}", port);
     println!("Image name: {}", image_name);
     println!("Entrypoint: {}", entrypoint);
-    println!("Python version: {}", args.python_version);
     println!("Push: {}", args.push);
     if let Some(registry) = &args.registry {
         println!("Registry: {}", registry);
@@ -132,7 +127,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         project_dir,
         entrypoint,
         port,
-        &args.python_version,
     );
 
     // Write modified Dockerfile to temp directory
@@ -185,12 +179,10 @@ fn modify_dockerfile(
     project_dir: &str,
     entrypoint: &str,
     port: u16,
-    python_version: &str,
 ) -> String {
     template
         .replace("{BASE_IMAGE}", base_image)
         .replace("{PROJECT_DIR}", project_dir)
-        .replace("{PYTHON_VERSION}", python_version)
         .replace("{PORT}", &port.to_string())
         .replace("{ENTRYPOINT}", entrypoint)
 }
