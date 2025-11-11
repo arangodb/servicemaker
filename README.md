@@ -28,7 +28,6 @@ servicemaker \
   --name myproject \
   --project-home /path/to/python/project \
   --base-image debian:trixie-slim \
-  --python-version 3.14 \
   --port 8080 \
   --image-name myregistry/myproject:latest \
   --entrypoint main.py \
@@ -51,7 +50,6 @@ servicemaker
 - `--push` - Whether to push the image (default: `false`)
 - `--registry` - URL of the Docker registry (optional, no default)
 - `--entrypoint` - Name of the Python script to run relative to project home (optional, will prompt if not provided)
-- `--python-version` - Python version to use (default: `3.14`)
 
 ## How it Works
 
@@ -76,6 +74,16 @@ The tool uses the Dockerfile in the project root as a template. The default temp
 - Copies the project to `/home/python/project`
 - Runs `uv sync` to install dependencies
 - Executes the specified entrypoint script
+
+## Python Version
+
+The Python version is not specified as a command-line option. Instead, you should declare the Python version in your project's `pyproject.toml` file. The `uv` package manager will automatically pick the appropriate Python version based on this declaration.
+
+For example, to use Python 3.13:
+
+```toml
+requires-python = "==3.13.*"
+```
 
 ## Notes
 
