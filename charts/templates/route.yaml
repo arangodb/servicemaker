@@ -1,0 +1,24 @@
+apiVersion: "networking.arangodb.com/v1alpha1"
+kind: "ArangoRoute"
+metadata:
+  name: {{ template "template.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ template "template.name" . }}
+    helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    release: {{ .Release.Name }}
+spec:
+  deployment: {{ .Values.arangodb_platform.deployment.name }}
+  destination:
+    service:
+      name: {{ template "template.name" . }}
+      port: "{PORT}"
+    schema: http
+    path: "/"
+    authentication:
+      type: required
+      passMode: pass
+  route:
+    path: "/{SERVICE_NAME}/"
