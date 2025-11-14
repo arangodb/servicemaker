@@ -30,7 +30,7 @@ spec:
         app.kubernetes.io/instance: {{ .Release.Name }}
         release: {{ .Release.Name }}
         type: deployment
-        profiles.arangodb.com/deployment: {{ .Values.arangodb_platform.deployment.name }}
+        profiles.arangodb.com/deployment: deployment
     spec:
       containers:
         - name: {SERVICE_NAME}
