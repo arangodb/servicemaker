@@ -10,7 +10,7 @@ metadata:
     app.kubernetes.io/instance: {{ .Release.Name }}
     release: {{ .Release.Name }}
 spec:
-  deployment: {{ .Values.arangodb_platform.deployment.name }}
+  deployment: deployment
   destination:
     service:
       name: {{ template "template.name" . }}
