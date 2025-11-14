@@ -5,6 +5,39 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use toml::Value;
 
+// Embedded chart files
+struct ChartFile {
+    path: &'static str,
+    content: &'static str,
+}
+
+const CHART_FILES: &[ChartFile] = &[
+    ChartFile {
+        path: "Chart.yaml",
+        content: include_str!("../charts/Chart.yaml"),
+    },
+    ChartFile {
+        path: "values.yaml",
+        content: include_str!("../charts/values.yaml"),
+    },
+    ChartFile {
+        path: "templates/_helpers.tpl",
+        content: include_str!("../charts/templates/_helpers.tpl"),
+    },
+    ChartFile {
+        path: "templates/deployment.yaml",
+        content: include_str!("../charts/templates/deployment.yaml"),
+    },
+    ChartFile {
+        path: "templates/route.yaml",
+        content: include_str!("../charts/templates/route.yaml"),
+    },
+    ChartFile {
+        path: "templates/service.yaml",
+        content: include_str!("../charts/templates/service.yaml"),
+    },
+];
+
 /// A tool to wrap Python projects as Docker services
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -170,29 +203,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Version from pyproject.toml: {}", version);
 
     let chart_dir = temp_dir.join(&service_name);
-    let charts_template_dir = PathBuf::from("charts");
 
-    if !charts_template_dir.exists() {
-        return Err(format!(
-            "Charts template directory does not exist: {}",
-            charts_template_dir.display()
-        )
-        .into());
-    }
-
-    println!(
-        "Copying charts template from {} to {}",
-        charts_template_dir.display(),
-        chart_dir.display()
-    );
-    copy_and_replace_charts(
-        &charts_template_dir,
-        &chart_dir,
-        &service_name,
-        &version,
-        port,
-        image_name,
-    )?;
+    println!("Generating charts template in {}", chart_dir.display());
+    copy_and_replace_charts(&chart_dir, &service_name, &version, port, image_name)?;
 
     // Run helm lint
     println!("\nRunning helm lint...");
@@ -339,7 +352,6 @@ fn read_service_info_from_pyproject(
 }
 
 fn copy_and_replace_charts(
-    src: &Path,
     dst: &Path,
     service_name: &str,
     version: &str,
@@ -350,28 +362,26 @@ fn copy_and_replace_charts(
         fs::create_dir_all(dst)?;
     }
 
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let path = entry.path();
-        let file_name = entry.file_name();
-        let dest_path = dst.join(&file_name);
+    // Process each embedded chart file
+    for chart_file in CHART_FILES {
+        // Create the full destination path
+        let dest_path = dst.join(chart_file.path);
 
-        if path.is_dir() {
-            copy_and_replace_charts(&path, &dest_path, service_name, version, port, image_name)?;
-        } else {
-            // Read file content
-            let content = fs::read_to_string(&path)?;
-
-            // Replace placeholders
-            let modified_content = content
-                .replace("{SERVICE_NAME}", service_name)
-                .replace("{VERSION}", version)
-                .replace("{PORT}", &port.to_string())
-                .replace("{IMAGE_NAME}", image_name);
-
-            // Write modified content
-            fs::write(&dest_path, modified_content)?;
+        // Create parent directories if needed
+        if let Some(parent) = dest_path.parent() {
+            fs::create_dir_all(parent)?;
         }
+
+        // Replace placeholders in the embedded content
+        let modified_content = chart_file
+            .content
+            .replace("{SERVICE_NAME}", service_name)
+            .replace("{VERSION}", version)
+            .replace("{PORT}", &port.to_string())
+            .replace("{IMAGE_NAME}", image_name);
+
+        // Write modified content
+        fs::write(&dest_path, modified_content)?;
     }
 
     Ok(())
