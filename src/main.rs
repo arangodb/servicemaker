@@ -3,6 +3,40 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use toml::Value;
+
+// Embedded chart files
+struct ChartFile {
+    path: &'static str,
+    content: &'static str,
+}
+
+const CHART_FILES: &[ChartFile] = &[
+    ChartFile {
+        path: "Chart.yaml",
+        content: include_str!("../charts/Chart.yaml"),
+    },
+    ChartFile {
+        path: "values.yaml",
+        content: include_str!("../charts/values.yaml"),
+    },
+    ChartFile {
+        path: "templates/_helpers.tpl",
+        content: include_str!("../charts/templates/_helpers.tpl"),
+    },
+    ChartFile {
+        path: "templates/deployment.yaml",
+        content: include_str!("../charts/templates/deployment.yaml"),
+    },
+    ChartFile {
+        path: "templates/route.yaml",
+        content: include_str!("../charts/templates/route.yaml"),
+    },
+    ChartFile {
+        path: "templates/service.yaml",
+        content: include_str!("../charts/templates/service.yaml"),
+    },
+];
 
 /// A tool to wrap Python projects as Docker services
 #[derive(Parser, Debug)]
@@ -44,23 +78,31 @@ struct Args {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = Args::parse();
 
-    // Prompt for missing required arguments
-    if args.name.is_none() {
-        args.name = Some(prompt("Project name")?);
-    }
-
+    // Get project home first (prompt if needed)
     if args.project_home.is_none() {
         let path_str = prompt("Project home path")?;
         args.project_home = Some(PathBuf::from(path_str));
     }
-    let project_dir = args
-        .project_home
-        .as_ref()
-        .unwrap()
-        .file_name()
-        .unwrap()
-        .to_str()
-        .unwrap();
+    let project_home = args.project_home.as_ref().unwrap();
+
+    // Validate project home exists
+    if !project_home.exists() {
+        return Err(format!("Project home does not exist: {}", project_home.display()).into());
+    }
+
+    // Try to get name from pyproject.toml if not provided on command line
+    if args.name.is_none()
+        && let Ok(name) = read_name_from_pyproject(project_home)
+    {
+        args.name = Some(name);
+    }
+
+    // Prompt for name if still not set
+    if args.name.is_none() {
+        args.name = Some(prompt("Project name")?);
+    }
+
+    let project_dir = project_home.file_name().unwrap().to_str().unwrap();
 
     if args.port.is_none() {
         let port_str = prompt("Exposed port number")?;
@@ -94,11 +136,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("Registry: {}", registry);
     }
     println!("=====================\n");
-
-    // Validate project home exists
-    if !project_home.exists() {
-        return Err(format!("Project home does not exist: {}", project_home.display()).into());
-    }
 
     // Create temporary directory
     let temp_dir =
@@ -159,6 +196,54 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("✓ Docker image pushed successfully");
     }
 
+    // Generate Helm chart
+    println!("\n=== Generating Helm Chart ===");
+    let (service_name, version) = read_service_info_from_pyproject(project_home)?;
+    println!("Service name from pyproject.toml: {}", service_name);
+    println!("Version from pyproject.toml: {}", version);
+
+    let chart_dir = temp_dir.join(&service_name);
+
+    println!("Generating charts template in {}", chart_dir.display());
+    copy_and_replace_charts(&chart_dir, &service_name, &version, port, image_name)?;
+
+    // Run helm lint
+    println!("\nRunning helm lint...");
+    let lint_status = Command::new("helm")
+        .args(["lint", chart_dir.to_str().unwrap()])
+        .status()?;
+
+    if !lint_status.success() {
+        return Err("Helm lint failed".into());
+    }
+
+    println!("✓ Helm lint passed");
+
+    // Run helm package
+    println!("\nRunning helm package...");
+    let package_status = Command::new("helm")
+        .args(["package", chart_dir.to_str().unwrap()])
+        .current_dir(&temp_dir)
+        .status()?;
+
+    if !package_status.success() {
+        return Err("Helm package failed".into());
+    }
+
+    // Find the generated chart file
+    let chart_file_name = format!("{}-{}.tgz", service_name, version);
+    let chart_file_path = temp_dir.join(&chart_file_name);
+
+    if chart_file_path.exists() {
+        println!(
+            "✓ Helm chart packaged successfully: {}",
+            chart_file_path.display()
+        );
+        println!("\nGenerated Helm chart: {}", chart_file_name);
+    } else {
+        return Err(format!("Helm chart file not found: {}", chart_file_path.display()).into());
+    }
+
     println!("\nTemporary directory: {}", temp_dir.display());
     println!("(Note: Temporary directory is left behind for inspection)");
 
@@ -209,6 +294,94 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
         } else {
             fs::copy(&path, &dest_path)?;
         }
+    }
+
+    Ok(())
+}
+
+fn read_name_from_pyproject(project_home: &Path) -> Result<String, Box<dyn std::error::Error>> {
+    let pyproject_path = project_home.join("pyproject.toml");
+
+    if !pyproject_path.exists() {
+        return Err(format!("pyproject.toml not found in: {}", project_home.display()).into());
+    }
+
+    let content = fs::read_to_string(&pyproject_path)?;
+    let value: Value = toml::from_str(&content)?;
+
+    // Extract project name
+    let name = value
+        .get("project")
+        .and_then(|p| p.get("name"))
+        .and_then(|n| n.as_str())
+        .ok_or("Missing 'project.name' in pyproject.toml")?
+        .to_string();
+
+    Ok(name)
+}
+
+fn read_service_info_from_pyproject(
+    project_home: &Path,
+) -> Result<(String, String), Box<dyn std::error::Error>> {
+    let pyproject_path = project_home.join("pyproject.toml");
+
+    if !pyproject_path.exists() {
+        return Err(format!("pyproject.toml not found in: {}", project_home.display()).into());
+    }
+
+    let content = fs::read_to_string(&pyproject_path)?;
+    let value: Value = toml::from_str(&content)?;
+
+    // Extract project name
+    let name = value
+        .get("project")
+        .and_then(|p| p.get("name"))
+        .and_then(|n| n.as_str())
+        .ok_or("Missing 'project.name' in pyproject.toml")?
+        .to_string();
+
+    // Extract version
+    let version = value
+        .get("project")
+        .and_then(|p| p.get("version"))
+        .and_then(|v| v.as_str())
+        .ok_or("Missing 'project.version' in pyproject.toml")?
+        .to_string();
+
+    Ok((name, version))
+}
+
+fn copy_and_replace_charts(
+    dst: &Path,
+    service_name: &str,
+    version: &str,
+    port: u16,
+    image_name: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if !dst.exists() {
+        fs::create_dir_all(dst)?;
+    }
+
+    // Process each embedded chart file
+    for chart_file in CHART_FILES {
+        // Create the full destination path
+        let dest_path = dst.join(chart_file.path);
+
+        // Create parent directories if needed
+        if let Some(parent) = dest_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        // Replace placeholders in the embedded content
+        let modified_content = chart_file
+            .content
+            .replace("{SERVICE_NAME}", service_name)
+            .replace("{VERSION}", version)
+            .replace("{PORT}", &port.to_string())
+            .replace("{IMAGE_NAME}", image_name);
+
+        // Write modified content
+        fs::write(&dest_path, modified_content)?;
     }
 
     Ok(())

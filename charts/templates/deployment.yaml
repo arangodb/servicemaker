@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "template.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ template "template.name" . }}
+    helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    release: {{ .Release.Name }}
+    type: deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ template "template.name" . }}
+      app.kubernetes.io/managed-by: {{ .Release.Service }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      release: {{ .Release.Name }}
+      type: deployment
+  template:
+    metadata:
+      annotations:
+        profiles.arangodb.com/profiles: {{ .Values.profiles | quote }}
+      labels:
+        app.kubernetes.io/name: {{ template "template.name" . }}
+        helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+        app.kubernetes.io/managed-by: {{ .Release.Service }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        release: {{ .Release.Name }}
+        type: deployment
+        profiles.arangodb.com/deployment: {{ .Values.arangodb_platform.deployment.name }}
+    spec:
+      containers:
+        - name: {SERVICE_NAME}
+          image: {IMAGE_NAME}
+          ports:
+            - name: server
+              containerPort: {PORT}
+          env:
+            - name: PORT
+              value: "{PORT}"

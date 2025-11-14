@@ -1,0 +1,17 @@
+---
+# Image
+images:
+  application:
+    registry: PLACEHOLDER
+    image: arango-cypher2aql/service
+    tag: PLACEHOLDER
+    kind: Application
+imagePullSecrets: []
+
+# Deployment
+arangodb_platform:
+  deployment:
+    name: PLACEHOLDER
+
+# Profiles
+profiles: ""
