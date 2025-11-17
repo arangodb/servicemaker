@@ -51,7 +51,7 @@ struct Args {
     project_home: Option<PathBuf>,
 
     /// Base Docker image
-    #[arg(long, default_value = "debian:trixie-slim")]
+    #[arg(long, default_value = "neunhoef/py13base:latest")]
     base_image: String,
 
     /// Exposed port number
@@ -73,6 +73,10 @@ struct Args {
     /// Name of the Python script to run (relative to project home)
     #[arg(long)]
     entrypoint: Option<String>,
+
+    /// Whether to create a tar.gz file with project files and virtual environment changes
+    #[arg(long, default_value = "false")]
+    make_tar_gz: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -132,6 +136,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Image name: {}", image_name);
     println!("Entrypoint: {}", entrypoint);
     println!("Push: {}", args.push);
+    println!("Make tar.gz: {}", args.make_tar_gz);
     if let Some(registry) = &args.registry {
         println!("Registry: {}", registry);
     }
@@ -194,6 +199,51 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         println!("✓ Docker image pushed successfully");
+    }
+
+    // Create tar.gz file if requested
+    if args.make_tar_gz {
+        println!("\n=== Creating project.tar.gz ===");
+
+        // Get absolute paths for mounts
+        let temp_dir_abs = temp_dir.canonicalize()?;
+        let zipper_script_path = PathBuf::from("scripts/zipper.sh");
+        let zipper_script_abs = zipper_script_path
+            .canonicalize()
+            .map_err(|e| format!("Failed to find zipper.sh script: {}", e))?;
+
+        println!("Mounting temp directory: {}", temp_dir_abs.display());
+        println!("Mounting zipper script: {}", zipper_script_abs.display());
+
+        let tar_status = Command::new("docker")
+            .args([
+                "run",
+                "-it",
+                "-v",
+                &format!("{}:/tmp/output", temp_dir_abs.display()),
+                "-v",
+                &format!("{}:/zipper.sh", zipper_script_abs.display()),
+                "--entrypoint",
+                "bash",
+                image_name,
+                "-c",
+                "/zipper.sh",
+            ])
+            .status()?;
+
+        if !tar_status.success() {
+            return Err("Failed to create project.tar.gz".into());
+        }
+
+        let tar_file_path = temp_dir.join("project.tar.gz");
+        if tar_file_path.exists() {
+            println!(
+                "✓ project.tar.gz created successfully: {}",
+                tar_file_path.display()
+            );
+        } else {
+            return Err(format!("project.tar.gz not found at: {}", tar_file_path.display()).into());
+        }
     }
 
     // Generate Helm chart

@@ -1,22 +1,21 @@
 FROM {BASE_IMAGE}
 
-RUN apt-get update && apt-get upgrade -y && apt-get install -y curl adduser libexpat1-dev && apt-get clean
-RUN adduser python
+USER root
+
 COPY {PROJECT_DIR} /home/python/{PROJECT_DIR}
-WORKDIR /home/python
 RUN chown -R python: {PROJECT_DIR}
 
 USER python
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-
 WORKDIR /home/python/{PROJECT_DIR}
 ENV UV_HTTP_TIMEOUT=3600
+RUN env
+
 RUN <<EOF
-rm -rf .venv
 . /home/python/.local/bin/env
-uv sync
+. /home/python/the_venv/bin/activate
+uv sync --active
 EOF
 
 EXPOSE {PORT}
 
-CMD ["/bin/bash", "-c", ". /home/python/.local/bin/env && uv run {ENTRYPOINT}"]
+CMD ["/bin/bash", "-c", ". /home/python/.local/bin/env && . /home/python/the_venv/bin/activate && uv run {ENTRYPOINT}"]
