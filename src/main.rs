@@ -144,7 +144,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create temporary directory
     let temp_dir =
-        std::env::temp_dir().join(format!("servicemaker-{}-{}", name, std::process::id()));
+        std::env::current_dir()?.join(format!("servicemaker-{}-{}", name, std::process::id()));
     println!("Creating temporary directory: {}", temp_dir.display());
 
     if temp_dir.exists() {
