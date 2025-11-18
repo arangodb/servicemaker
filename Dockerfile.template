@@ -2,20 +2,20 @@ FROM {BASE_IMAGE}
 
 USER root
 
-COPY {PROJECT_DIR} /home/python/{PROJECT_DIR}
-RUN chown -R python: {PROJECT_DIR}
+COPY {PROJECT_DIR} /home/user/{PROJECT_DIR}
+RUN chown -R user: {PROJECT_DIR}
 
-USER python
-WORKDIR /home/python/{PROJECT_DIR}
+USER user
+WORKDIR /home/user/{PROJECT_DIR}
 ENV UV_HTTP_TIMEOUT=3600
 RUN env
 
 RUN <<EOF
-. /home/python/.local/bin/env
-. /home/python/the_venv/bin/activate
+. /home/user/.local/bin/env
+. /home/user/the_venv/bin/activate
 uv sync --active
 EOF
 
 EXPOSE {PORT}
 
-CMD ["/bin/bash", "-c", ". /home/python/.local/bin/env && . /home/python/the_venv/bin/activate && uv run {ENTRYPOINT}"]
+CMD ["/bin/bash", "-c", ". /home/user/.local/bin/env && . /home/user/the_venv/bin/activate && uv run {ENTRYPOINT}"]

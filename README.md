@@ -70,8 +70,8 @@ servicemaker
 The tool uses the Dockerfile in the project root as a template. The default template:
 
 - Uses `uv` package manager for fast dependency installation
-- Creates a non-root `python` user
-- Copies the project to `/home/python/project`
+- Creates a non-root `user` user
+- Copies the project to `/home/user/project`
 - Runs `uv sync` to install dependencies
 - Executes the specified entrypoint script
 

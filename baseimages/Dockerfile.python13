@@ -3,16 +3,16 @@ FROM debian:trixie-slim
 COPY entrypoint.sh /entrypoint.sh
 
 RUN apt-get update && apt-get upgrade -y && apt-get install -y curl adduser libexpat1-dev bash && apt-get clean
-RUN adduser python
-WORKDIR /home/python
+RUN adduser user
+WORKDIR /home/user
 
-USER python
+USER user
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ENV UV_HTTP_TIMEOUT=3600
 RUN <<EOF
 rm -rf the_venv
-. /home/python/.local/bin/env
+. /home/user/.local/bin/env
 uv venv --python 3.13 the_venv
 . the_venv/bin/activate
 uv pip install networkx
