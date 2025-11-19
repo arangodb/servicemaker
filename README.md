@@ -1,5 +1,9 @@
 # ServiceMaker
 
+THIS SERVICE HAS BEEN MOVED TO THIS REPOSITORY:
+
+  https://github.com/arangodb/servicemaker
+
 A tool to wrap Python projects as Docker services.
 
 ## Features
