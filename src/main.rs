@@ -161,6 +161,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     copy_dir_recursive(project_home, &project_dest)?;
 
+    // Extract Python version from base image name
+    let python_version = extract_python_version(&args.base_image);
+
     // Read and modify Dockerfile template
     let dockerfile_template = include_str!("../Dockerfile.template");
     let modified_dockerfile = modify_dockerfile(
@@ -169,6 +172,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         project_dir,
         entrypoint,
         port,
+        &python_version,
     );
 
     // Write modified Dockerfile to temp directory
@@ -308,18 +312,39 @@ fn prompt(message: &str) -> Result<String, io::Error> {
     Ok(input.trim().to_string())
 }
 
+fn extract_python_version(base_image: &str) -> String {
+    // Extract Python version from base image name (e.g., "py13base" -> "3.13", "py12base" -> "3.12")
+    if let Some(py_pos) = base_image.find("py") {
+        let after_py = &base_image[py_pos + 2..];
+        if let Some(end_pos) = after_py.find(|c: char| !c.is_ascii_digit()) {
+            let version_digits = &after_py[..end_pos];
+            if !version_digits.is_empty() {
+                // Convert "13" -> "3.13", "12" -> "3.12", etc.
+                return format!("3.{}", version_digits);
+            }
+        } else if !after_py.is_empty() && after_py.chars().all(|c| c.is_ascii_digit()) {
+            // Handle case where version digits extend to end of string
+            return format!("3.{}", after_py);
+        }
+    }
+    // Default fallback if pattern not found
+    "3.13".to_string()
+}
+
 fn modify_dockerfile(
     template: &str,
     base_image: &str,
     project_dir: &str,
     entrypoint: &str,
     port: u16,
+    python_version: &str,
 ) -> String {
     template
         .replace("{BASE_IMAGE}", base_image)
         .replace("{PROJECT_DIR}", project_dir)
         .replace("{PORT}", &port.to_string())
         .replace("{ENTRYPOINT}", entrypoint)
+        .replace("{PYTHON_VERSION}", python_version)
 }
 
 fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {

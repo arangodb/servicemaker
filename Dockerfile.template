@@ -2,20 +2,16 @@ FROM {BASE_IMAGE}
 
 USER root
 
-COPY {PROJECT_DIR} /home/user/{PROJECT_DIR}
-RUN chown -R user: {PROJECT_DIR}
+COPY ./scripts /scripts
+COPY {PROJECT_DIR} /project/{PROJECT_DIR}
+RUN chown -R user: /project/{PROJECT_DIR}
 
 USER user
-WORKDIR /home/user/{PROJECT_DIR}
-ENV UV_HTTP_TIMEOUT=3600
-RUN env
+WORKDIR /project/{PROJECT_DIR}
 
-RUN <<EOF
-. /home/user/.local/bin/env
-. /home/user/the_venv/bin/activate
-uv sync --active
-EOF
+RUN /scripts/prepareproject.sh
 
 EXPOSE {PORT}
+ENV PYTHONPATH=/project/the_venv/lib/python{PYTHON_VERSION}/site-packages
 
 CMD ["/bin/bash", "-c", ". /home/user/.local/bin/env && . /home/user/the_venv/bin/activate && uv run {ENTRYPOINT}"]
