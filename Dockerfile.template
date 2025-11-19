@@ -14,6 +14,5 @@ RUN /scripts/prepareproject.sh
 RUN ln -s /project/{PROJECT_DIR}/{ENTRYPOINT} /project/entrypoint
 
 EXPOSE {PORT}
-ENV PYTHONPATH=/project/the_venv/lib/python{PYTHON_VERSION}/site-packages
 
-CMD ["/bin/bash", "-c", ". /home/user/.local/bin/env && . /home/user/the_venv/bin/activate && export PYTHONPATH=/project/the_venv/lib/python{PYTHON_VERSION}/site-packages && uv run {ENTRYPOINT}"]
+CMD ["/bin/bash", "-c", ". /home/user/.local/bin/env && . /home/user/the_venv/bin/activate && export PYTHONPATH=/project/the_venv/lib/python{PYTHON_VERSION}/site-packages && uv run --active {ENTRYPOINT}"]

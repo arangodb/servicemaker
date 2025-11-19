@@ -21,7 +21,10 @@ cat sums_sha256_new sums_sha256 | sort | uniq -c | grep "^      1 " | awk '{ pri
 rm sums_sha256_new
 
 # Now move all files over to their new home under /project/the_venv:
+mkdir /project/the_venv   # just in case nothing is added
 while IFS= read -r filename; do
+    echo Moving "$filename" to "project/$filename" ...
+
     # Skip empty lines
     [[ -z "$filename" ]] && continue
     
