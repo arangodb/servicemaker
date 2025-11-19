@@ -69,7 +69,7 @@ struct Args {
     project_home: Option<PathBuf>,
 
     /// Base Docker image
-    #[arg(long, default_value = "neunhoef/py13base:latest")]
+    #[arg(long, default_value = "arangodb/py13base:latest")]
     base_image: String,
 
     /// Exposed port number
