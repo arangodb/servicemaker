@@ -1,3 +1,3 @@
-arangodb/py13base
-arangodb/py12base
-arangodb/py13cugraph
+py13base
+py12base
+py13cugraph
