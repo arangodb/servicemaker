@@ -10,6 +10,7 @@ USER user
 WORKDIR /project/{PROJECT_DIR}
 
 RUN /scripts/prepareproject.sh
+RUN ln -s /project/{PROJECT_DIR}/{ENTRYPOINT} /project/entrypoint
 
 EXPOSE {PORT}
 ENV PYTHONPATH=/project/the_venv/lib/python{PYTHON_VERSION}/site-packages

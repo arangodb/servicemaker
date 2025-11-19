@@ -117,6 +117,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         args.image_name = Some(prompt("Docker image name")?);
     }
 
+    // Prompt for entrypoint if still not set
     if args.entrypoint.is_none() {
         args.entrypoint = Some(prompt("Python entrypoint script (e.g., main.py)")?);
     }
@@ -231,7 +232,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "bash",
                 image_name,
                 "-c",
-                "/zipper.sh",
+                &format!("/zipper.sh {}", project_dir),
             ])
             .status()?;
 
