@@ -9,11 +9,11 @@ set -e
 export UV_HTTP_TIMEOUT=3600
 . /home/user/.local/bin/env
 . /home/user/the_venv/bin/activate
-uv sync --active
+uv pip install -r pyproject.toml
 
 # First find all files which have changed, if any has changed, we abort:
 cd /home/user
-sha256sum -c sums_sha256 2> /dev/null | grep -v OK
+sha256sum -c sums_sha256
 
 # Now find all files which have been added:
 find the_venv -type f -print0 | xargs -0 sha256sum >> sums_sha256_new

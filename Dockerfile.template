@@ -4,7 +4,8 @@ USER root
 
 COPY ./scripts /scripts
 COPY {PROJECT_DIR} /project/{PROJECT_DIR}
-RUN chown -R user: /project/{PROJECT_DIR}
+RUN ls -lR /project
+RUN chown -R user: /project && chmod 755 /project
 
 USER user
 WORKDIR /project/{PROJECT_DIR}
@@ -15,4 +16,4 @@ RUN ln -s /project/{PROJECT_DIR}/{ENTRYPOINT} /project/entrypoint
 EXPOSE {PORT}
 ENV PYTHONPATH=/project/the_venv/lib/python{PYTHON_VERSION}/site-packages
 
-CMD ["/bin/bash", "-c", ". /home/user/.local/bin/env && . /home/user/the_venv/bin/activate && uv run {ENTRYPOINT}"]
+CMD ["/bin/bash", "-c", ". /home/user/.local/bin/env && . /home/user/the_venv/bin/activate && export PYTHONPATH=/project/the_venv/lib/python{PYTHON_VERSION}/site-packages && uv run {ENTRYPOINT}"]
