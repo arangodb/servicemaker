@@ -1,4 +1,8 @@
-all: py13
+all: build
 
-py13:
-	docker build -f Dockerfile.python13 -t neunhoef/py13base .
+build:
+	./build.sh
+
+push:
+	./push.sh
+

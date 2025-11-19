@@ -6,6 +6,8 @@ RUN /scripts/debinstall.sh
 WORKDIR /home/user
 USER user
 
-RUN /scripts/prepareuv.sh 3.13 python-arango phenolrs networkx
+RUN /scripts/prepareuv.sh 3.13 --extra-index-url https://pypi.nvidia.com/ \
+   python-arango phenolrs networkx \
+   cugraph-cu12 
 
 CMD [ "/scripts/entrypoint.sh" ]
