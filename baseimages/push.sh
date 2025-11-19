@@ -1,4 +1,4 @@
 #!/bin/bash
 for i in $(cat imagelist.txt) ; do 
-  docker push $i
+  docker push "neunhoef/$i"
 done
