@@ -34,6 +34,12 @@ platform) that does the following, basically all in one call:
  - create a zipfile which can simply be unzipped on top of the chosen 
    base image, so that the service can run in that base image
 
+Here, it is crucial that the place where the zipfile is extracted
+is **separate from all files in the base image**, because these files
+must be **immutable**. For now, we put the files and additional dependencies
+under `/project` and use permissions of the user `user`, which exists in
+the base images already.
+
 This approach offers a number of deployment possibilities for different
 situations:
 
@@ -60,7 +66,7 @@ situations:
    services via some API.
 5. Short term, we can allow proof of concepts to be done on our own devstack,
    either via 1. or 2 (1 is ready with 1.3.2 Operator it is possible to pull
-   it from anywhere.
+   it from anywhere).
 
 We have to provide tooling for the following cases:
 
@@ -79,7 +85,7 @@ Questionable for me:
 
 For Python, I propose to implement the above in the following way: Our tool
 (sample implementation in the `servicemaker` 
-[here](https://github.com/neunhoef/servicemaker) ) defines a few base images
+[here](https://github.com/arangodb/servicemaker) ) defines a few base images
 for various Python versions and potentially different selections of 
 pre-installed libs. 
 
@@ -93,22 +99,31 @@ environment is activated.
 
 Then the tool takes the Python project (which should run on the selected
 Python version and have all its dependencies declared in `pyproject.toml`),
-and we build a derived Docker image by using `uv sync --active` **in the same
-virtual environment**. This has the effect to only install those dependencies
-in addition, which are not already contained in the virtual env in the base
-image. At the same time, the net result is a single virtual environment,
-exactly as modern tooling for Python expects it. This will be a robust
-solution with very little which can go wrong, as far as I can see.
+and we build a derived Docker image by using `uv install -r pyproject.toml` 
+**in the same virtual environment**. This has the effect to only install
+those dependencies in addition, which are not already contained in the
+virtual env in the base image.
 
 We can the produce a zipfile in the following way: The base image can
 include a file with a list of all files in the virtual environment together
 with their SHA256 sum. This means that after successful creation of the
-final Docker image, we can simply check which files in the virtual env
-have changed and which have been added. We can then create a single
-zipfile, which includes all changed files, all new files as well as the
-files of the project itself. This means that if one simply extracts the
-zipfile in the home directory of `user` in the base Docker image, one can
-reproduce the complete installation exactly.
+final Docker image, we can simply check that no files in the virtual env
+have changed and which have been added. We can then move over the new files
+to a parallel directory hierarchy under `/project/the_venv/...`. 
+
+To run the project, we simply activate the virtual environment in 
+`/home/user/the_venv` and additional set the `PYTHONPATH` to also find
+stuff in `/project/the_venv/lib/python3.13/site-packages/` for the 
+additional dependencies.
+
+We can then create a single zipfile, which includes all new files as
+well as the files of the project itself. This means that if one simply
+extracts the zipfile in `/project` on top of the base Docker image, one
+can reproduce the complete installation exactly.
+
+This means one can either run the derived Docker image directly, or one
+can implement a solution to take the zipfile, extract it in `/project`,
+set a few environment variables and then run the code.
 
 This approach combines:
 
@@ -122,6 +137,3 @@ This approach combines:
 If this works well, we can replicate the approach for other languages. It
 seems conceivable that node-based approaches with modern JS tools work exactly
 the same way.
-
-
-
