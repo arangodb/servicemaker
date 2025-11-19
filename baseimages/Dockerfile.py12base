@@ -1,0 +1,11 @@
+FROM debian:trixie-slim
+
+COPY ./scripts /scripts
+RUN /scripts/debinstall.sh
+
+WORKDIR /home/user
+USER user
+
+RUN /scripts/prepareuv.sh 3.12 python-arango phenolrs networkx
+
+CMD [ "/scripts/entrypoint.sh" ]

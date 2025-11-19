@@ -1,6 +1,7 @@
 use clap::Parser;
 use std::fs;
 use std::io::{self, Write};
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use toml::Value;
@@ -38,6 +39,23 @@ const CHART_FILES: &[ChartFile] = &[
     },
 ];
 
+// Embedded script files
+struct ScriptFile {
+    path: &'static str,
+    content: &'static str,
+}
+
+const SCRIPT_FILES: &[ScriptFile] = &[
+    ScriptFile {
+        path: "prepareproject.sh",
+        content: include_str!("../scripts/prepareproject.sh"),
+    },
+    ScriptFile {
+        path: "zipper.sh",
+        content: include_str!("../scripts/zipper.sh"),
+    },
+];
+
 /// A tool to wrap Python projects as Docker services
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -51,7 +69,7 @@ struct Args {
     project_home: Option<PathBuf>,
 
     /// Base Docker image
-    #[arg(long, default_value = "debian:trixie-slim")]
+    #[arg(long, default_value = "arangodb/py13base:latest")]
     base_image: String,
 
     /// Exposed port number
@@ -73,6 +91,10 @@ struct Args {
     /// Name of the Python script to run (relative to project home)
     #[arg(long)]
     entrypoint: Option<String>,
+
+    /// Whether to create a tar.gz file with project files and virtual environment changes
+    #[arg(long, default_value = "false")]
+    make_tar_gz: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -113,6 +135,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         args.image_name = Some(prompt("Docker image name")?);
     }
 
+    // Prompt for entrypoint if still not set
     if args.entrypoint.is_none() {
         args.entrypoint = Some(prompt("Python entrypoint script (e.g., main.py)")?);
     }
@@ -132,6 +155,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Image name: {}", image_name);
     println!("Entrypoint: {}", entrypoint);
     println!("Push: {}", args.push);
+    println!("Make tar.gz: {}", args.make_tar_gz);
     if let Some(registry) = &args.registry {
         println!("Registry: {}", registry);
     }
@@ -139,13 +163,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create temporary directory
     let temp_dir =
-        std::env::temp_dir().join(format!("servicemaker-{}-{}", name, std::process::id()));
+        std::env::current_dir()?.join(format!("servicemaker-{}-{}", name, std::process::id()));
     println!("Creating temporary directory: {}", temp_dir.display());
 
     if temp_dir.exists() {
         fs::remove_dir_all(&temp_dir)?;
     }
     fs::create_dir_all(&temp_dir)?;
+
+    // Copy scripts to temp directory with executable permissions
+    copy_scripts_to_temp(&temp_dir)?;
 
     // Copy project directory to temp directory
     let project_dest = temp_dir.join("project");
@@ -156,6 +183,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     copy_dir_recursive(project_home, &project_dest)?;
 
+    // Extract Python version from base image name
+    let python_version = extract_python_version(&args.base_image);
+
     // Read and modify Dockerfile template
     let dockerfile_template = include_str!("../Dockerfile.template");
     let modified_dockerfile = modify_dockerfile(
@@ -164,6 +194,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         project_dir,
         entrypoint,
         port,
+        &python_version,
     );
 
     // Write modified Dockerfile to temp directory
@@ -194,6 +225,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         println!("✓ Docker image pushed successfully");
+    }
+
+    // Create tar.gz file if requested
+    if args.make_tar_gz {
+        println!("\n=== Creating project.tar.gz ===");
+
+        // Get absolute path for mount
+        let temp_dir_abs = temp_dir.canonicalize()?;
+
+        println!("Mounting temp directory: {}", temp_dir_abs.display());
+
+        let tar_status = Command::new("docker")
+            .args([
+                "run",
+                "-it",
+                "-v",
+                &format!("{}:/tmp/output", temp_dir_abs.display()),
+                "--entrypoint",
+                "bash",
+                image_name,
+                "-c",
+                &format!("/scripts/zipper.sh {}", project_dir),
+            ])
+            .status()?;
+
+        if !tar_status.success() {
+            return Err("Failed to create project.tar.gz".into());
+        }
+
+        let tar_file_path = temp_dir.join("project.tar.gz");
+        if tar_file_path.exists() {
+            println!(
+                "✓ project.tar.gz created successfully: {}",
+                tar_file_path.display()
+            );
+        } else {
+            return Err(format!("project.tar.gz not found at: {}", tar_file_path.display()).into());
+        }
     }
 
     // Generate Helm chart
@@ -258,18 +327,39 @@ fn prompt(message: &str) -> Result<String, io::Error> {
     Ok(input.trim().to_string())
 }
 
+fn extract_python_version(base_image: &str) -> String {
+    // Extract Python version from base image name (e.g., "py13base" -> "3.13", "py12base" -> "3.12")
+    if let Some(py_pos) = base_image.find("py") {
+        let after_py = &base_image[py_pos + 2..];
+        if let Some(end_pos) = after_py.find(|c: char| !c.is_ascii_digit()) {
+            let version_digits = &after_py[..end_pos];
+            if !version_digits.is_empty() {
+                // Convert "13" -> "3.13", "12" -> "3.12", etc.
+                return format!("3.{}", version_digits);
+            }
+        } else if !after_py.is_empty() && after_py.chars().all(|c| c.is_ascii_digit()) {
+            // Handle case where version digits extend to end of string
+            return format!("3.{}", after_py);
+        }
+    }
+    // Default fallback if pattern not found
+    "3.13".to_string()
+}
+
 fn modify_dockerfile(
     template: &str,
     base_image: &str,
     project_dir: &str,
     entrypoint: &str,
     port: u16,
+    python_version: &str,
 ) -> String {
     template
         .replace("{BASE_IMAGE}", base_image)
         .replace("{PROJECT_DIR}", project_dir)
         .replace("{PORT}", &port.to_string())
         .replace("{ENTRYPOINT}", entrypoint)
+        .replace("{PYTHON_VERSION}", python_version)
 }
 
 fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
@@ -349,6 +439,27 @@ fn read_service_info_from_pyproject(
         .to_string();
 
     Ok((name, version))
+}
+
+fn copy_scripts_to_temp(temp_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let scripts_dir = temp_dir.join("scripts");
+    fs::create_dir_all(&scripts_dir)?;
+
+    // Process each embedded script file
+    for script_file in SCRIPT_FILES {
+        let dest_path = scripts_dir.join(script_file.path);
+
+        // Write script content
+        fs::write(&dest_path, script_file.content)?;
+
+        // Set executable permissions (0o755 = rwxr-xr-x)
+        let mut perms = fs::metadata(&dest_path)?.permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&dest_path, perms)?;
+    }
+
+    println!("Created scripts directory: {}", scripts_dir.display());
+    Ok(())
 }
 
 fn copy_and_replace_charts(

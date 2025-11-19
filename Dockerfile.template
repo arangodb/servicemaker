@@ -1,22 +1,18 @@
 FROM {BASE_IMAGE}
 
-RUN apt-get update && apt-get upgrade -y && apt-get install -y curl adduser libexpat1-dev && apt-get clean
-RUN adduser python
-COPY {PROJECT_DIR} /home/python/{PROJECT_DIR}
-WORKDIR /home/python
-RUN chown -R python: {PROJECT_DIR}
+USER root
 
-USER python
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+COPY ./scripts /scripts
+COPY {PROJECT_DIR} /project/{PROJECT_DIR}
+RUN ls -lR /project
+RUN chown -R user: /project && chmod 755 /project
 
-WORKDIR /home/python/{PROJECT_DIR}
-ENV UV_HTTP_TIMEOUT=3600
-RUN <<EOF
-rm -rf .venv
-. /home/python/.local/bin/env
-uv sync
-EOF
+USER user
+WORKDIR /project/{PROJECT_DIR}
+
+RUN /scripts/prepareproject.sh
+RUN ln -s /project/{PROJECT_DIR}/{ENTRYPOINT} /project/entrypoint
 
 EXPOSE {PORT}
 
-CMD ["/bin/bash", "-c", ". /home/python/.local/bin/env && uv run {ENTRYPOINT}"]
+CMD ["/bin/bash", "-c", ". /home/user/.local/bin/env && . /home/user/the_venv/bin/activate && export PYTHONPATH=/project/the_venv/lib/python{PYTHON_VERSION}/site-packages && uv run --active {ENTRYPOINT}"]
