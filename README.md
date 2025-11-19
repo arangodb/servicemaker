@@ -48,9 +48,8 @@ servicemaker
 - `--project-home` - Path to the folder containing the Python project (optional, will prompt if not provided)
 - `--base-image` - Base Docker image (default: `neunhoef/py13base:latest`)
 - `--port` - Exposed port number (optional, will prompt if not provided)
-- `--image-name` - Docker image name to push (optional, will prompt if not provided)
+- `--image-name` - Docker image name to push (optional, will prompt if not provided). Can include registry prefix (e.g., `myregistry.com/myproject:latest`)
 - `--push` - Whether to push the image (default: `false`)
-- `--registry` - URL of the Docker registry (optional, no default)
 - `--entrypoint` - Name of the Python script to run relative to project home (optional, will prompt if not provided)
 - `--make-tar-gz` - Whether to create a tar.gz archive with project files and virtual environment changes (default: `false`). See [The `--make-tar-gz` Option](#the---make-tar-gz-option) section for details.
 

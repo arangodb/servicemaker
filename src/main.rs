@@ -84,10 +84,6 @@ struct Args {
     #[arg(long, default_value = "false")]
     push: bool,
 
-    /// URL of the Docker registry (default: Docker Hub)
-    #[arg(long)]
-    registry: Option<String>,
-
     /// Name of the Python script to run (relative to project home)
     #[arg(long)]
     entrypoint: Option<String>,
@@ -156,9 +152,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Entrypoint: {}", entrypoint);
     println!("Push: {}", args.push);
     println!("Make tar.gz: {}", args.make_tar_gz);
-    if let Some(registry) = &args.registry {
-        println!("Registry: {}", registry);
-    }
     println!("=====================\n");
 
     // Create temporary directory
