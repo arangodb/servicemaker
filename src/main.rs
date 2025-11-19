@@ -1,6 +1,7 @@
 use clap::Parser;
 use std::fs;
 use std::io::{self, Write};
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use toml::Value;
@@ -35,6 +36,23 @@ const CHART_FILES: &[ChartFile] = &[
     ChartFile {
         path: "templates/service.yaml",
         content: include_str!("../charts/templates/service.yaml"),
+    },
+];
+
+// Embedded script files
+struct ScriptFile {
+    path: &'static str,
+    content: &'static str,
+}
+
+const SCRIPT_FILES: &[ScriptFile] = &[
+    ScriptFile {
+        path: "prepareproject.sh",
+        content: include_str!("../scripts/prepareproject.sh"),
+    },
+    ScriptFile {
+        path: "zipper.sh",
+        content: include_str!("../scripts/zipper.sh"),
     },
 ];
 
@@ -153,6 +171,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     fs::create_dir_all(&temp_dir)?;
 
+    // Copy scripts to temp directory with executable permissions
+    copy_scripts_to_temp(&temp_dir)?;
+
     // Copy project directory to temp directory
     let project_dest = temp_dir.join("project");
     println!(
@@ -210,15 +231,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.make_tar_gz {
         println!("\n=== Creating project.tar.gz ===");
 
-        // Get absolute paths for mounts
+        // Get absolute path for mount
         let temp_dir_abs = temp_dir.canonicalize()?;
-        let zipper_script_path = PathBuf::from("scripts/zipper.sh");
-        let zipper_script_abs = zipper_script_path
-            .canonicalize()
-            .map_err(|e| format!("Failed to find zipper.sh script: {}", e))?;
 
         println!("Mounting temp directory: {}", temp_dir_abs.display());
-        println!("Mounting zipper script: {}", zipper_script_abs.display());
 
         let tar_status = Command::new("docker")
             .args([
@@ -226,13 +242,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "-it",
                 "-v",
                 &format!("{}:/tmp/output", temp_dir_abs.display()),
-                "-v",
-                &format!("{}:/zipper.sh", zipper_script_abs.display()),
                 "--entrypoint",
                 "bash",
                 image_name,
                 "-c",
-                &format!("/zipper.sh {}", project_dir),
+                &format!("/scripts/zipper.sh {}", project_dir),
             ])
             .status()?;
 
@@ -425,6 +439,27 @@ fn read_service_info_from_pyproject(
         .to_string();
 
     Ok((name, version))
+}
+
+fn copy_scripts_to_temp(temp_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let scripts_dir = temp_dir.join("scripts");
+    fs::create_dir_all(&scripts_dir)?;
+
+    // Process each embedded script file
+    for script_file in SCRIPT_FILES {
+        let dest_path = scripts_dir.join(script_file.path);
+
+        // Write script content
+        fs::write(&dest_path, script_file.content)?;
+
+        // Set executable permissions (0o755 = rwxr-xr-x)
+        let mut perms = fs::metadata(&dest_path)?.permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&dest_path, perms)?;
+    }
+
+    println!("Created scripts directory: {}", scripts_dir.display());
+    Ok(())
 }
 
 fn copy_and_replace_charts(
