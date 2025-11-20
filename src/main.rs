@@ -164,11 +164,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     fs::create_dir_all(&temp_dir)?;
 
-    // Set permissions to 0777 to allow any user inside Docker container to write
-    let mut perms = fs::metadata(&temp_dir)?.permissions();
-    perms.set_mode(0o777);
-    fs::set_permissions(&temp_dir, perms)?;
-
     // Copy scripts to temp directory with executable permissions
     copy_scripts_to_temp(&temp_dir)?;
 
@@ -232,6 +227,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Get absolute path for mount
         let temp_dir_abs = temp_dir.canonicalize()?;
 
+        // Get current user ID to run container with same user
+        let uid = get_current_uid()?;
+        println!("Using current user ID: {}", uid);
         println!("Mounting temp directory: {}", temp_dir_abs.display());
 
         let tar_status = Command::new("docker")
@@ -239,13 +237,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "run",
                 "--rm",
                 "-it",
+                "--user",
+                &uid.to_string(),
                 "-v",
                 &format!("{}:/tmp/output", temp_dir_abs.display()),
                 "--entrypoint",
                 "bash",
                 image_name,
                 "-c",
-                &format!("chmod 0777 /tmp/output && /scripts/zipper.sh {}", project_dir),
+                &format!("/scripts/zipper.sh {}", project_dir),
             ])
             .status()?;
 
@@ -324,6 +324,19 @@ fn prompt(message: &str) -> Result<String, io::Error> {
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
     Ok(input.trim().to_string())
+}
+
+fn get_current_uid() -> Result<u32, Box<dyn std::error::Error>> {
+    let output = Command::new("id").args(["-u"]).output()?;
+
+    if !output.status.success() {
+        return Err("Failed to get current user ID".into());
+    }
+
+    let uid_str = String::from_utf8(output.stdout)?.trim().to_string();
+    let uid = uid_str.parse::<u32>()?;
+
+    Ok(uid)
 }
 
 fn extract_python_version(base_image: &str) -> String {
