@@ -3,13 +3,13 @@ version: 2.1
 jobs:
   build-and-test:
     docker:
-      - image: cimg/rust:1.80
+      - image: cimg/rust:1.90
     steps:
       - checkout
       
       # Setup Docker
       - setup_remote_docker:
-          version: 24.0.0
+          docker_layer_caching: true
       
       # Install Docker CLI (needed to run docker commands)
       - run:
