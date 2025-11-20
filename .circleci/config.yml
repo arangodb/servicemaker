@@ -52,6 +52,13 @@ jobs:
             - target
           key: cargo-{{ checksum "Cargo.lock" }}
       
+      # Install Helm
+      - run:
+          name: Install Helm
+          command: |
+            curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+            helm version
+      
       # Run integration tests
       - run:
           name: Run integration tests
