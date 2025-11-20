@@ -245,7 +245,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "bash",
                 image_name,
                 "-c",
-                &format!("/scripts/zipper.sh {}", project_dir),
+                &format!("chmod 0777 /tmp/output && /scripts/zipper.sh {}", project_dir),
             ])
             .status()?;
 
