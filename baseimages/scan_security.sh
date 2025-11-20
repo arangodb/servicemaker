@@ -41,7 +41,7 @@ while IFS= read -r image_name || [[ -n "$image_name" ]]; do
     echo "Scanning: ${FULL_IMAGE_NAME}"
     echo "----------------------------------------"
     
-    if grype --fail-on high "${FULL_IMAGE_NAME}"; then
+    if grype -v --fail-on high "${FULL_IMAGE_NAME}"; then
         echo "✓ ${FULL_IMAGE_NAME} passed security scan"
     else
         echo "✗ ${FULL_IMAGE_NAME} failed security scan (high severity issues found)"
