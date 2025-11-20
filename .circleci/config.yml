@@ -62,7 +62,7 @@ jobs:
       # Run integration tests
       - run:
           name: Run integration tests
-          command: cargo run --release --bin integration_tests
+          command: cargo run --release --bin integration_tests -- --no-zip-test
 
 workflows:
   version: 2

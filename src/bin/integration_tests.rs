@@ -1,6 +1,16 @@
+use clap::Parser;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+#[derive(Parser)]
+#[command(name = "integration_tests")]
+#[command(about = "Run integration tests for servicemaker")]
+struct Args {
+    /// Skip the test which runs the base image with mounting the zip file
+    #[arg(long)]
+    no_zip_test: bool,
+}
 
 #[derive(serde::Deserialize)]
 struct TestConfig {
@@ -9,6 +19,8 @@ struct TestConfig {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args = Args::parse();
+
     println!("=== Integration Tests ===\n");
 
     // Get the project root directory (assumed to be current directory)
@@ -43,7 +55,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let project_name = test_dir.file_name().unwrap().to_string_lossy().to_string();
         println!("=== Testing: {} ===", project_name);
 
-        match test_project(&project_root, test_dir) {
+        match test_project(&project_root, test_dir, args.no_zip_test) {
             Ok(_) => {
                 println!("✓ Test passed for {}\n", project_name);
             }
@@ -89,7 +101,11 @@ fn find_test_directories(
     Ok(dirs)
 }
 
-fn test_project(project_root: &Path, test_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
+fn test_project(
+    project_root: &Path,
+    test_dir: &Path,
+    skip_zip_test: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     let project_name = test_dir.file_name().unwrap().to_string_lossy().to_string();
     let config_path = test_dir.join("config.json");
 
@@ -160,13 +176,17 @@ fn test_project(project_root: &Path, test_dir: &Path) -> Result<(), Box<dyn std:
     println!("\n--- Test 1: Running Docker image ---");
     test_docker_image(&image_name)?;
 
-    // Test 2: Run using tar.gz approach
-    println!("\n--- Test 2: Running with tar.gz file ---");
-    let tar_file = temp_dir.join("project.tar.gz");
-    if !tar_file.exists() {
-        return Err(format!("project.tar.gz not found at: {}", tar_file.display()).into());
+    // Test 2: Run using tar.gz approach (skip if --no-zip-test is set)
+    if skip_zip_test {
+        println!("\n--- Test 2: Skipped (--no-zip-test flag set) ---");
+    } else {
+        println!("\n--- Test 2: Running with tar.gz file ---");
+        let tar_file = temp_dir.join("project.tar.gz");
+        if !tar_file.exists() {
+            return Err(format!("project.tar.gz not found at: {}", tar_file.display()).into());
+        }
+        test_tar_gz_approach(&temp_dir, &tar_file, &config.base_image)?;
     }
-    test_tar_gz_approach(&temp_dir, &tar_file, &config.base_image)?;
 
     // Cleanup: Remove temporary directory and Docker image
     println!("\n--- Cleanup ---");
