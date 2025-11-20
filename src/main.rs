@@ -232,6 +232,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let tar_status = Command::new("docker")
             .args([
                 "run",
+                "--rm",
                 "-it",
                 "-v",
                 &format!("{}:/tmp/output", temp_dir_abs.display()),
