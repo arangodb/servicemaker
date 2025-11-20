@@ -224,31 +224,84 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.make_tar_gz {
         println!("\n=== Creating project.tar.gz ===");
 
-        // Get absolute path for mount
-        let temp_dir_abs = temp_dir.canonicalize()?;
-
-        println!("Mounting temp directory: {}", temp_dir_abs.display());
-
-        let tar_status = Command::new("docker")
+        // Run container in detached mode to get container ID
+        let container_output = Command::new("docker")
             .args([
                 "run",
-                "--rm",
-                "-it",
-                "-v",
-                &format!("{}:/tmp/output", temp_dir_abs.display()),
+                "-d",
                 "--entrypoint",
                 "bash",
                 image_name,
                 "-c",
                 &format!("/scripts/zipper.sh {}", project_dir),
             ])
-            .status()?;
+            .output()?;
 
-        if !tar_status.success() {
-            return Err("Failed to create project.tar.gz".into());
+        if !container_output.status.success() {
+            return Err(format!(
+                "Failed to start Docker container: {}",
+                String::from_utf8_lossy(&container_output.stderr)
+            )
+            .into());
         }
 
+        let container_id = String::from_utf8(container_output.stdout)?
+            .trim()
+            .to_string();
+        println!("Started container: {}", container_id);
+
+        // Wait for container to finish
+        println!("Waiting for container to finish...");
+        let wait_status = Command::new("docker")
+            .args(["wait", &container_id])
+            .status()?;
+
+        if !wait_status.success() {
+            return Err("Failed to wait for container".into());
+        }
+
+        // Check exit code of the container
+        let exit_code_output = Command::new("docker")
+            .args(["inspect", "-f", "{{.State.ExitCode}}", &container_id])
+            .output()?;
+
+        if !exit_code_output.status.success() {
+            return Err("Failed to inspect container exit code".into());
+        }
+
+        let exit_code = String::from_utf8(exit_code_output.stdout)?
+            .trim()
+            .parse::<i32>()?;
+
+        if exit_code != 0 {
+            return Err(format!("Container exited with code: {}", exit_code).into());
+        }
+
+        // Copy file from container to temp directory
         let tar_file_path = temp_dir.join("project.tar.gz");
+        println!("Copying project.tar.gz from container...");
+        let copy_status = Command::new("docker")
+            .args([
+                "cp",
+                &format!("{}:/tmp/project.tar.gz", container_id),
+                tar_file_path.to_str().unwrap(),
+            ])
+            .status()?;
+
+        if !copy_status.success() {
+            return Err("Failed to copy project.tar.gz from container".into());
+        }
+
+        // Remove the container
+        println!("Removing container...");
+        let rm_status = Command::new("docker")
+            .args(["rm", &container_id])
+            .status()?;
+
+        if !rm_status.success() {
+            return Err("Failed to remove container".into());
+        }
+
         if tar_file_path.exists() {
             println!(
                 "✓ project.tar.gz created successfully: {}",
