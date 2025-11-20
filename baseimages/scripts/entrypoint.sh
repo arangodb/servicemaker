@@ -9,7 +9,7 @@ fi
 
 # Try to unzip the project zip, if the `project.tar.gz` file is there:
 if test -e project.tar.gz ; then
-  tar czvf project.tar.gz
+  tar xzvf project.tar.gz
 fi
 
 # Run the entrypoint if configured:

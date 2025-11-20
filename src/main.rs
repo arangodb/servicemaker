@@ -168,7 +168,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     copy_scripts_to_temp(&temp_dir)?;
 
     // Copy project directory to temp directory
-    let project_dest = temp_dir.join("project");
+    let project_dest = temp_dir.join(project_dir);
     println!(
         "Copying project from {} to {}",
         project_home.display(),

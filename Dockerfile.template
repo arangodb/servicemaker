@@ -4,8 +4,6 @@ USER root
 
 COPY ./scripts /scripts
 COPY {PROJECT_DIR} /project/{PROJECT_DIR}
-RUN ls -lR /project
-RUN chown -R user: /project && chmod 755 /project
 
 USER user
 WORKDIR /project/{PROJECT_DIR}

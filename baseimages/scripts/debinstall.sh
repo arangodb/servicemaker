@@ -5,3 +5,6 @@ apt-get upgrade -y
 apt-get install -y curl adduser bash
 apt-get clean
 adduser user
+mkdir /project
+chown -R user:user /project
+chmod 755 /project
