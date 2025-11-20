@@ -64,6 +64,26 @@ jobs:
           name: Run integration tests
           command: cargo run --release --bin integration_tests -- --no-zip-test
 
+  security-scan:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      
+      # Install grype
+      - run:
+          name: Install grype
+          command: |
+            curl -sSfL https://get.anchore.io/grype | sudo sh -s -- -b /usr/local/bin
+            grype version
+      
+      # Make scan script executable and run it
+      - run:
+          name: Scan base images for security vulnerabilities
+          command: |
+            chmod +x baseimages/scan_security.sh
+            baseimages/scan_security.sh
+
 workflows:
   version: 2
   build-and-test:
@@ -72,4 +92,12 @@ workflows:
           filters:
             branches:
               ignore: []  # Run on all branches
+  
+  security-scan-nightly:
+    jobs:
+      - security-scan:
+          filters:
+            branches:
+              ignore: /.*/  # Ignore all branches - workflow will not run on pushes
+          # Configure as a scheduled workflow in CircleCI UI for nightly runs
 
