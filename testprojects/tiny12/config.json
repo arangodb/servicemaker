@@ -1,0 +1,5 @@
+{
+  "base_image": "arangodb/py12base:latest",
+  "entrypoint": "hello.py"
+}
+
