@@ -1,0 +1,68 @@
+version: 2.1
+
+jobs:
+  build-and-test:
+    docker:
+      - image: cimg/rust:1.80
+    steps:
+      - checkout
+      
+      # Setup Docker
+      - setup_remote_docker:
+          version: 24.0.0
+      
+      # Install Docker CLI (needed to run docker commands)
+      - run:
+          name: Install Docker CLI
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y lsb-release
+            curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+            sudo apt-get update
+            sudo apt-get install -y docker-ce-cli
+            docker --version
+      
+      # Restore cargo cache
+      - restore_cache:
+          keys:
+            - cargo-{{ checksum "Cargo.lock" }}
+            - cargo-
+      
+      # Check code compiles
+      - run:
+          name: Cargo check
+          command: cargo check
+      
+      # Run clippy linter
+      - run:
+          name: Cargo clippy
+          command: cargo clippy --all-targets --all-features -- -D warnings
+      
+      # Build the project in release mode
+      - run:
+          name: Build project (release mode)
+          command: cargo build --release
+      
+      # Save cargo cache
+      - save_cache:
+          paths:
+            - /home/circleci/.cargo/registry
+            - /home/circleci/.cargo/git
+            - target
+          key: cargo-{{ checksum "Cargo.lock" }}
+      
+      # Run integration tests
+      - run:
+          name: Run integration tests
+          command: cargo run --release --bin integration_tests
+
+workflows:
+  version: 2
+  build-and-test:
+    jobs:
+      - build-and-test:
+          filters:
+            branches:
+              ignore: []  # Run on all branches
+
