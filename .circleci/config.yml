@@ -1,5 +1,10 @@
 version: 2.1
 
+parameters:
+  security_scan:
+    type: boolean
+    default: false
+
 jobs:
   build-and-test:
     docker:
@@ -94,10 +99,7 @@ workflows:
               ignore: []  # Run on all branches
   
   security-scan-nightly:
+    when: << pipeline.parameters.security_scan >>
     jobs:
-      - security-scan:
-          filters:
-            branches:
-              ignore: /.*/  # Ignore all branches - workflow will not run on pushes
-          # Configure as a scheduled workflow in CircleCI UI for nightly runs
+      - security-scan
 
