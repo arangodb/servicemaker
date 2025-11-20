@@ -164,6 +164,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     fs::create_dir_all(&temp_dir)?;
 
+    // Set permissions to 0777 to allow any user inside Docker container to write
+    let mut perms = fs::metadata(&temp_dir)?.permissions();
+    perms.set_mode(0o777);
+    fs::set_permissions(&temp_dir, perms)?;
+
     // Copy scripts to temp directory with executable permissions
     copy_scripts_to_temp(&temp_dir)?;
 
