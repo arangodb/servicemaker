@@ -224,19 +224,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.make_tar_gz {
         println!("\n=== Creating project.tar.gz ===");
 
-        // Create output directory with 0777 permissions
-        let output_dir = temp_dir.join("output");
-        fs::create_dir_all(&output_dir)?;
-        let mut perms = fs::metadata(&output_dir)?.permissions();
-        perms.set_mode(0o777);
-        fs::set_permissions(&output_dir, perms)?;
-        println!(
-            "Created output directory with 0777 permissions: {}",
-            output_dir.display()
-        );
-
         // Get absolute path for mount
         let temp_dir_abs = temp_dir.canonicalize()?;
+
         println!("Mounting temp directory: {}", temp_dir_abs.display());
 
         let tar_status = Command::new("docker")
@@ -258,29 +248,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Err("Failed to create project.tar.gz".into());
         }
 
-        // Copy archive from output subdirectory to temp directory root
-        let source_file = output_dir.join("project.tar.gz");
-        let dest_file = temp_dir.join("project.tar.gz");
-
-        if !source_file.exists() {
-            return Err(format!("project.tar.gz not found at: {}", source_file.display()).into());
+        let tar_file_path = temp_dir.join("project.tar.gz");
+        if tar_file_path.exists() {
+            println!(
+                "✓ project.tar.gz created successfully: {}",
+                tar_file_path.display()
+            );
+        } else {
+            return Err(format!("project.tar.gz not found at: {}", tar_file_path.display()).into());
         }
-
-        fs::copy(&source_file, &dest_file)?;
-        println!(
-            "✓ Copied project.tar.gz from {} to {}",
-            source_file.display(),
-            dest_file.display()
-        );
-
-        // Remove the output subdirectory
-        fs::remove_dir_all(&output_dir)?;
-        println!("✓ Removed output directory");
-
-        println!(
-            "✓ project.tar.gz created successfully: {}",
-            dest_file.display()
-        );
     }
 
     // Generate Helm chart
@@ -344,7 +320,6 @@ fn prompt(message: &str) -> Result<String, io::Error> {
     io::stdin().read_line(&mut input)?;
     Ok(input.trim().to_string())
 }
-
 
 fn extract_python_version(base_image: &str) -> String {
     // Extract Python version from base image name (e.g., "py13base" -> "3.13", "py12base" -> "3.12")
