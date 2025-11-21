@@ -82,7 +82,7 @@ jobs:
           name: Scan base images for security vulnerabilities
           command: |
             chmod +x baseimages/scan_security.sh
-            baseimages/scan_security.sh || echo "SCAN_FAILED=1" >> $BASH_ENV
+            baseimages/scan_security.sh || (echo "SCAN_FAILED=1" >> $BASH_ENV && exit 1)
           no_output_timeout: 30m
       
       # Notify Slack on failure
