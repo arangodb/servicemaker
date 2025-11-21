@@ -124,7 +124,6 @@ jobs:
           #    ]
           #  }
           #webhook: ${SLACK_WEBHOOK_URL}
-          when: always
 
 workflows:
   version: 2
