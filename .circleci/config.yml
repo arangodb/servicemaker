@@ -90,39 +90,40 @@ jobs:
           event: fail
           mentions: '@neunhoef'
           channel: '#CircleCI Notifications'
-          custom: |
-            {
-              "attachments": [
-                {
-                  "color": "danger",
-                  "title": "Security Scan Failed",
-                  "text": "Security scan of base images has failed. Please check the CircleCI job for details.",
-                  "fields": [
-                    {
-                      "title": "Pipeline",
-                      "value": "<< pipeline.project.name >>",
-                      "short": true
-                    },
-                    {
-                      "title": "Branch",
-                      "value": "<< pipeline.git.branch >>",
-                      "short": true
-                    },
-                    {
-                      "title": "Commit",
-                      "value": "<< pipeline.git.revision >>",
-                      "short": false
-                    },
-                    {
-                      "title": "Job URL",
-                      "value": "<< pipeline.project.url >>/<< pipeline.number >>",
-                      "short": false
-                    }
-                  ]
-                }
-              ]
-            }
-          webhook: ${SLACK_WEBHOOK_URL}
+          template: basic_fail_1
+          #custom: |
+          #  {
+          #    "attachments": [
+          #      {
+          #        "color": "danger",
+          #        "title": "Security Scan Failed",
+          #        "text": "Security scan of base images has failed. Please check the CircleCI job for details.",
+          #        "fields": [
+          #          {
+          #            "title": "Pipeline",
+          #            "value": "<< pipeline.project.name >>",
+          #            "short": true
+          #          },
+          #          {
+          #            "title": "Branch",
+          #            "value": "<< pipeline.git.branch >>",
+          #            "short": true
+          #          },
+          #          {
+          #            "title": "Commit",
+          #            "value": "<< pipeline.git.revision >>",
+          #            "short": false
+          #          },
+          #          {
+          #            "title": "Job URL",
+          #            "value": "<< pipeline.project.url >>/<< pipeline.number >>",
+          #            "short": false
+          #          }
+          #        ]
+          #      }
+          #    ]
+          #  }
+          #webhook: ${SLACK_WEBHOOK_URL}
           when: always
 
 workflows:
