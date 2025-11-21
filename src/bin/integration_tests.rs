@@ -297,7 +297,7 @@ fn test_tar_gz_approach(
         if !last_line.contains("Hello World!") {
             return Err(format!(
                 "Expected last line to contain 'Hello World!', but got:\n{}",
-                stdout
+                last_line
             )
             .into());
         }

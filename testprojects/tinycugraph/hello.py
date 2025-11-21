@@ -8,8 +8,8 @@ import cugraph
 init(autoreset=True)
 
 def main():
-    print(f"{Fore.GREEN}Hello World!{Style.RESET_ALL}")
     print("Cugraph version:", cugraph.__version__)
+    print(f"{Fore.GREEN}Hello World!{Style.RESET_ALL}")
 
 if __name__ == "__main__":
     main()
