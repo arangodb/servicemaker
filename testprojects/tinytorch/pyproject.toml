@@ -1,0 +1,11 @@
+[project]
+name = "hello-world"
+version = "1.0.0"
+description = "A simple hello world program"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "colorama>=0.4.6",
+    "torch>=2.9.0",
+]
+

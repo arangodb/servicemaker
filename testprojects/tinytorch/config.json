@@ -1,0 +1,5 @@
+{
+  "base_image": "arangodb/py13torch:latest",
+  "entrypoint": "hello.py"
+}
+

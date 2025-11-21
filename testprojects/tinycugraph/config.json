@@ -1,0 +1,5 @@
+{
+  "base_image": "arangodb/py13cugraph:latest",
+  "entrypoint": "hello.py"
+}
+
