@@ -6,6 +6,5 @@ readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
     "colorama>=0.4.6",
-    "cugraph-cu12>=25.10.1",
 ]
 
