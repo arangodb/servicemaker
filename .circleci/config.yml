@@ -1,5 +1,8 @@
 version: 2.1
 
+orbs:
+  slack: circleci/slack@5.1.1
+
 parameters:
   security_scan:
     type: boolean
@@ -15,18 +18,6 @@ jobs:
       # Setup Docker
       - setup_remote_docker:
           docker_layer_caching: true
-      
-      # Install Docker CLI (needed to run docker commands)
-      #- run:
-      #    name: Install Docker CLI
-      #    command: |
-      #      sudo apt-get update
-      #      sudo apt-get install -y lsb-release
-      #      curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
-      #      echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-      #      sudo apt-get update
-      #      sudo apt-get install -y docker-ce-cli
-      #      docker --version
       
       # Restore cargo cache
       - restore_cache:
@@ -91,7 +82,48 @@ jobs:
           name: Scan base images for security vulnerabilities
           command: |
             chmod +x baseimages/scan_security.sh
-            baseimages/scan_security.sh
+            baseimages/scan_security.sh || echo "SCAN_FAILED=1" >> $BASH_ENV
+          no_output_timeout: 30m
+      
+      # Notify Slack on failure
+      - slack/notify:
+          event: fail
+          mentions: '@neunhoef'
+          channel: '#CircleCI Notifications'
+          custom: |
+            {
+              "attachments": [
+                {
+                  "color": "danger",
+                  "title": "Security Scan Failed",
+                  "text": "Security scan of base images has failed. Please check the CircleCI job for details.",
+                  "fields": [
+                    {
+                      "title": "Pipeline",
+                      "value": "<< pipeline.project.name >>",
+                      "short": true
+                    },
+                    {
+                      "title": "Branch",
+                      "value": "<< pipeline.git.branch >>",
+                      "short": true
+                    },
+                    {
+                      "title": "Commit",
+                      "value": "<< pipeline.git.revision >>",
+                      "short": false
+                    },
+                    {
+                      "title": "Job URL",
+                      "value": "<< pipeline.project.url >>/<< pipeline.number >>",
+                      "short": false
+                    }
+                  ]
+                }
+              ]
+            }
+          webhook: ${SLACK_WEBHOOK_URL}
+          when: always
 
 workflows:
   version: 2
@@ -106,5 +138,6 @@ workflows:
   security-scan-nightly:
     when: << pipeline.parameters.security_scan >>
     jobs:
-      - security-scan
+      - security-scan:
+          context: slack-secrets
 

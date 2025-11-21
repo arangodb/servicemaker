@@ -50,7 +50,7 @@ while IFS= read -r image_name || [[ -n "$image_name" ]]; do
     
     # Scan the Docker image itself
     echo "Scanning Docker image: ${FULL_IMAGE_NAME}"
-    if grype -v --fail-on high "${FULL_IMAGE_NAME}"; then
+    if grype -v --fail-on medium "${FULL_IMAGE_NAME}"; then
         echo "✓ ${FULL_IMAGE_NAME} passed Docker image security scan"
     else
         echo "✗ ${FULL_IMAGE_NAME} failed Docker image security scan (high severity issues found)"
