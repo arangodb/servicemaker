@@ -15,7 +15,7 @@ if test -e project.tar.gz ; then
 fi
 
 # Run the entrypoint if configured:
-if test -L entrypoint ; then
+if test -e entrypoint ; then
   ENTRYPOINT=$(cat entrypoint)
   echo Running project ...
   . /home/user/.local/bin/env
