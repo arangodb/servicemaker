@@ -10,7 +10,7 @@ USER user
 WORKDIR /project/{PROJECT_DIR}
 
 RUN /scripts/prepareproject.sh
-RUN ln -s /project/{PROJECT_DIR}/{ENTRYPOINT} /project/entrypoint
+RUN echo "/project/{PROJECT_DIR}/{ENTRYPOINT}" > /project/entrypoint
 
 EXPOSE {PORT}
 

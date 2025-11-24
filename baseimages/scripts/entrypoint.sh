@@ -16,13 +16,14 @@ fi
 
 # Run the entrypoint if configured:
 if test -L entrypoint ; then
+  ENTRYPOINT=$(cat entrypoint)
   echo Running project ...
   . /home/user/.local/bin/env
   . /home/user/the_venv/bin/activate
   for p in /project/the_venv/lib/python*/site-packages ; do
     export PYTHONPATH=$p
   done
-  exec uv run ./entrypoint
+  exec python $ENTRYPOINT
 fi
 
 echo No entrypoint found, running bash instead...
