@@ -21,4 +21,4 @@ spec:
       type: required
       passMode: pass
   route:
-    path: "/{SERVICE_NAME}/"
+    path: "/_services/{SERVICE_NAME}/"
