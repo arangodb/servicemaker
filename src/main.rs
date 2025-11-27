@@ -131,6 +131,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         args.image_name = Some(prompt("Docker image name")?);
     }
 
+    // Try to auto-detect entrypoint if exactly one .py file exists
+    if args.entrypoint.is_none()
+        && let Ok(Some(py_file)) = find_single_py_file(project_home)
+    {
+        args.entrypoint = Some(py_file);
+    }
+
     // Prompt for entrypoint if still not set
     if args.entrypoint.is_none() {
         args.entrypoint = Some(prompt("Python entrypoint script (e.g., main.py)")?);
@@ -434,6 +441,32 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
     }
 
     Ok(())
+}
+
+fn find_single_py_file(project_home: &Path) -> Result<Option<String>, Box<dyn std::error::Error>> {
+    let mut py_files = Vec::new();
+
+    for entry in fs::read_dir(project_home)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        // Only check files (not directories) and only at the root level
+        if path.is_file()
+            && let Some(extension) = path.extension()
+            && extension == "py"
+            && let Some(file_name) = path.file_name()
+            && let Some(name_str) = file_name.to_str()
+        {
+            py_files.push(name_str.to_string());
+        }
+    }
+
+    // Return the filename if exactly one .py file is found
+    if py_files.len() == 1 {
+        Ok(Some(py_files[0].clone()))
+    } else {
+        Ok(None)
+    }
 }
 
 fn read_name_from_pyproject(project_home: &Path) -> Result<String, Box<dyn std::error::Error>> {
