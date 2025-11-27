@@ -48,6 +48,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     println!();
 
+    // Clean up any leftover temporary directories from previous runs
+    println!("--- Cleaning up leftover temporary directories ---");
+    cleanup_leftover_temp_directories(&project_root)?;
+    println!();
+
     let mut failed_projects: Vec<(String, String)> = Vec::new();
 
     // Process each test directory
@@ -99,6 +104,46 @@ fn find_test_directories(
     }
 
     Ok(dirs)
+}
+
+fn cleanup_leftover_temp_directories(
+    project_root: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut cleaned_count = 0;
+
+    for entry in fs::read_dir(project_root)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.is_dir()
+            && let Some(dir_name) = path.file_name().and_then(|n| n.to_str())
+        {
+            // Match directories starting with "servicemaker-" and containing at least one more "-"
+            // This matches patterns like "servicemaker-<name>-<pid>"
+            if dir_name.starts_with("servicemaker-") && dir_name.matches('-').count() >= 2 {
+                println!("Removing leftover temporary directory: {}", path.display());
+                fs::remove_dir_all(&path).map_err(|e| {
+                    format!(
+                        "Failed to remove leftover temporary directory {}: {}",
+                        path.display(),
+                        e
+                    )
+                })?;
+                cleaned_count += 1;
+            }
+        }
+    }
+
+    if cleaned_count > 0 {
+        println!(
+            "✓ Removed {} leftover temporary directory/ies",
+            cleaned_count
+        );
+    } else {
+        println!("  (No leftover temporary directories found)");
+    }
+
+    Ok(())
 }
 
 fn test_project(
