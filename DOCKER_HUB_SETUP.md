@@ -1,7 +1,6 @@
 # Docker Hub Setup for CircleCI
 
-Note: Max Neunhöffer has done the following to setup image pushing
-      using the `neunhoef` account to produce an access token.
+Note: The following has been done for the `releasebot` user on Docker hub.
 
 ## Overview
 
@@ -28,19 +27,19 @@ The `rebuild-base-images-manual` workflow in CircleCI requires Docker Hub creden
 2. Click on **Organization Settings** in the left sidebar
 3. Click on **Contexts**
 4. Click **Create Context**
-5. Name it exactly: `dockerhub-credentials` (this matches the context referenced in the workflow)
+5. Name it exactly: `docker-hub` (this matches the context referenced in the workflow)
 6. Click **Create Context**
 
 ### Step 3: Add Environment Variables to the Context
 
-1. Click on the `dockerhub-credentials` context you just created
+1. Click on the `docker-hub` context you just created
 2. Click **Add Environment Variable**
 3. Add the first variable:
-   - **Name**: `DOCKERHUB_USERNAME`
+   - **Name**: `DOCKER_HUB_USER`
    - **Value**: Your Docker Hub username (must have push access to the `arangodb` organization)
    - Click **Add Environment Variable**
 4. Add the second variable:
-   - **Name**: `DOCKERHUB_PASSWORD`
+   - **Name**: `DOCKER_HUB_PASSWORD`
    - **Value**: The access token you created in Step 1 (paste the token here)
    - Click **Add Environment Variable**
 
@@ -117,11 +116,11 @@ This means your Docker Hub account doesn't have push access to the `arangodb` or
 
 This is usually a transient Docker login issue. Re-run the workflow.
 
-### "DOCKERHUB_USERNAME or DOCKERHUB_PASSWORD not set"
+### "DOCKER_HUB_USER or DOCKER_HUB_PASSWORD not set"
 
 Make sure:
-1. The context name is exactly `dockerhub-credentials`
-2. The environment variables are named exactly `DOCKERHUB_USERNAME` and `DOCKERHUB_PASSWORD`
+1. The context name is exactly `docker-hub`
+2. The environment variables are named exactly `DOCKER_HUB_USER` and `DOCKER_HUB_PASSWORD`
 3. Your CircleCI project has access to the context (check Context > Settings > Security)
 
 ## Security Notes

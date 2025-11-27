@@ -109,7 +109,7 @@ jobs:
       - run:
           name: Login to Docker Hub
           command: |
-            echo "$DOCKERHUB_PASSWORD" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+            echo "$DOCKER_HUB_PASSWORD" | docker login -u "$DOCKER_HUB_USER" --password-stdin
       
       # Build base images
       - run:
@@ -149,5 +149,5 @@ workflows:
     when: << pipeline.parameters.rebuild_base_images >>
     jobs:
       - rebuild-base-images:
-          context: dockerhub-credentials
+          context: docker-hub
 
