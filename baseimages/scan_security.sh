@@ -15,7 +15,7 @@ if [[ ! -f "${IMAGELIST_FILE}" ]]; then
 fi
 
 cp $IMAGELIST_FILE $IMAGELIST_FILE_COPY
-echo "arangodb/test-service" >> $IMAGELIST_FILE_COPY
+echo "test-service" >> $IMAGELIST_FILE_COPY
 
 # Check if grype is installed
 if ! command -v grype &> /dev/null; then
