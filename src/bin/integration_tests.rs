@@ -1,4 +1,5 @@
 use clap::Parser;
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -46,6 +47,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for dir in &test_dirs {
         println!("  - {}", dir.display());
     }
+    println!();
+
+    // Collect all unique base images from test projects
+    println!("--- Collecting base images from test projects ---");
+    let base_images = collect_base_images(&test_dirs)?;
+    println!("Found {} unique base image(s):", base_images.len());
+    for image in &base_images {
+        println!("  - {}", image);
+    }
+    println!();
+
+    // Pull all base images to ensure they are current
+    println!("--- Pulling base images ---");
+    pull_base_images(&base_images)?;
     println!();
 
     // Clean up any leftover temporary directories from previous runs
@@ -104,6 +119,48 @@ fn find_test_directories(
     }
 
     Ok(dirs)
+}
+
+fn collect_base_images(test_dirs: &[PathBuf]) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    let mut base_images = HashSet::new();
+
+    for test_dir in test_dirs {
+        let config_path = test_dir.join("config.json");
+        if config_path.exists() {
+            let config_content = fs::read_to_string(&config_path)?;
+            let config: TestConfig = serde_json::from_str(&config_content).map_err(|e| {
+                format!(
+                    "Failed to parse config.json in {}: {}",
+                    test_dir.display(),
+                    e
+                )
+            })?;
+            base_images.insert(config.base_image);
+        }
+    }
+
+    let mut images: Vec<String> = base_images.into_iter().collect();
+    images.sort();
+    Ok(images)
+}
+
+fn pull_base_images(base_images: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    for image in base_images {
+        println!("Pulling base image: {}", image);
+        let output = Command::new("docker")
+            .args(["pull", image])
+            .output()
+            .map_err(|e| format!("Failed to run docker pull command for {}: {}", image, e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("Failed to pull base image {}: {}", image, stderr).into());
+        }
+
+        println!("✓ Successfully pulled {}", image);
+    }
+
+    Ok(())
 }
 
 fn cleanup_leftover_temp_directories(
