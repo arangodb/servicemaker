@@ -1,10 +1,11 @@
-.PHONY: release clean help
+.PHONY: release clean help test-service
 
 # Default target
 help:
 	@echo "Available targets:"
 	@echo "  release - Build static x86_64 binary and prepare for GitHub release"
 	@echo "  clean   - Clean build artifacts"
+	@echo "  test-servie - Build the Docker image `arangodb/test-service`
 
 # Build static binary for GitHub release
 release:
@@ -44,3 +45,5 @@ clean:
 	rm -f servicemaker
 	@echo "✓ Cleaned build artifacts"
 
+test-service:
+	target/release/servicemaker --project-home arango-test-service --port 8000 --make-tar-gz --push --image-name arangodb/test-service

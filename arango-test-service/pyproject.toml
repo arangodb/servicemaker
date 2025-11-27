@@ -1,0 +1,17 @@
+[project]
+name = "arango-test-service"
+version = "1.0.0"
+description = "Small FastAPI service for ArangoDB operations"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "python-arango>=8.1.0",
+]
+
+[build-system]
+requires = ["setuptools>=75.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["main"]

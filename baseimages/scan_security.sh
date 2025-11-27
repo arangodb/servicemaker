@@ -7,11 +7,15 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IMAGELIST_FILE="${SCRIPT_DIR}/imagelist.txt"
+IMAGELIST_FILE_COPY="/tmp/imagelist.txt"
 
 if [[ ! -f "${IMAGELIST_FILE}" ]]; then
     echo "Error: imagelist.txt not found at ${IMAGELIST_FILE}" >&2
     exit 1
 fi
+
+cp $IMAGELIST_FILE $IMAGELIST_FILE_COPY
+echo "arangodb/test-service" >> $IMAGELIST_FILE_COPY
 
 # Check if grype is installed
 if ! command -v grype &> /dev/null; then
@@ -94,7 +98,7 @@ while IFS= read -r image_name || [[ -n "$image_name" ]]; do
         echo "✗ Failed to start container for ${FULL_IMAGE_NAME}: ${CONTAINER_ID}"
         FAILED_SCANS=$((FAILED_SCANS + 1))
     fi
-done < "${IMAGELIST_FILE}"
+done < "${IMAGELIST_FILE_COPY}"
 
 echo ""
 echo "========================================"
