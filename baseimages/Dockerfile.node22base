@@ -1,13 +1,6 @@
 FROM debian:trixie-slim
 
 COPY ./scripts /scripts
-
-# FIX: Convert Windows CRLF → LF and make scripts executable
-RUN apt-get update && apt-get install -y dos2unix \
-    && dos2unix /scripts/*.sh \
-    && chmod +x /scripts/*.sh
-
-# Now the script will run successfully
 RUN /scripts/debinstall.sh
 
 # Install Node.js 22
