@@ -1,0 +1,11 @@
+{
+  "name": "demo-itzpapalotl",
+  "version": "1.0.0",
+  "description": "itzpapalotl ===========",
+  "main": "itzpapalotl.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC"
+}

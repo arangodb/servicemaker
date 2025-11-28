@@ -51,12 +51,16 @@ const SCRIPT_FILES: &[ScriptFile] = &[
         content: include_str!("../scripts/prepareproject.sh"),
     },
     ScriptFile {
+        path: "prepareproject-nodejs.sh",
+        content: include_str!("../scripts/prepareproject-nodejs.sh"),
+    },
+    ScriptFile {
         path: "zipper.sh",
         content: include_str!("../scripts/zipper.sh"),
     },
 ];
 
-/// A tool to wrap Python projects as Docker services
+/// A tool to wrap Python and Node.js projects as Docker services
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -64,7 +68,7 @@ struct Args {
     #[arg(long)]
     name: Option<String>,
 
-    /// Path to the folder containing the Python project
+    /// Path to the folder containing the project
     #[arg(long)]
     project_home: Option<PathBuf>,
 
@@ -91,6 +95,10 @@ struct Args {
     /// Whether to create a tar.gz file with project files and virtual environment changes
     #[arg(long, default_value = "false")]
     make_tar_gz: bool,
+
+    /// Mount path for the service (required for Foxx services, e.g., /itz)
+    #[arg(long)]
+    mount_path: Option<String>,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -108,11 +116,78 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err(format!("Project home does not exist: {}", project_home.display()).into());
     }
 
-    // Try to get name from pyproject.toml if not provided on command line
-    if args.name.is_none()
-        && let Ok(name) = read_name_from_pyproject(project_home)
-    {
-        args.name = Some(name);
+    // Detect project type
+    let project_type = detect_project_type(project_home)?;
+    println!("Detected project type: {}", project_type);
+
+    // Handle project type-specific configuration
+    match project_type.as_str() {
+        "python" => {
+            // Try to get name from pyproject.toml if not provided on command line
+            if args.name.is_none()
+                && let Ok(name) = read_name_from_pyproject(project_home)
+            {
+                args.name = Some(name);
+            }
+            
+            // Try to auto-detect entrypoint if exactly one .py file exists
+            if args.entrypoint.is_none()
+                && let Ok(Some(py_file)) = find_single_py_file(project_home)
+            {
+                args.entrypoint = Some(py_file);
+            }
+
+            // Prompt for entrypoint if still not set
+            if args.entrypoint.is_none() {
+                args.entrypoint = Some(prompt("Python entrypoint script (e.g., main.py)")?);
+            }
+        }
+        "foxx" => {
+            // Multi-service structure (has services.json)
+            // Try to get name from package.json if not provided
+            if args.name.is_none()
+                && let Ok(name) = read_name_from_package_json(project_home)
+            {
+                args.name = Some(name);
+            }
+
+            // Set default base image for Node.js if not specified
+            if args.base_image == "arangodb/py13base:latest" {
+                args.base_image = "arangodb/node22base:latest".to_string();
+            }
+        }
+        "foxx-service" | "nodejs" => {
+            // Single service directory - will create wrapper structure
+            let service_name = project_home.file_name().unwrap().to_str().unwrap();
+
+            // Try to get name from package.json if not provided
+            if args.name.is_none() {
+                if let Ok(name) = read_name_from_package_json(project_home) {
+                    args.name = Some(name);
+                } else {
+                    args.name = Some(service_name.to_string());
+                }
+            }
+
+            // Set default base image for Node.js if not specified
+            if args.base_image == "arangodb/py13base:latest" {
+                args.base_image = "arangodb/node22base:latest".to_string();
+            }
+
+            // Prompt for mount path if not provided (for foxx-service)
+            if project_type == "foxx-service" && args.mount_path.is_none() {
+                let default_mount = format!("/{}", service_name.to_lowercase());
+                let mount_input = prompt(&format!("Mount path (default: {})", default_mount))?;
+                args.mount_path = Some(if mount_input.is_empty() {
+                    default_mount
+                } else {
+                    mount_input
+                });
+            }
+        }
+        _ => {
+            return Err(format!("Unsupported project type: {}", project_type).into());
+        }
     }
 
     // Prompt for name if still not set
@@ -120,7 +195,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         args.name = Some(prompt("Project name")?);
     }
 
-    let project_dir = project_home.file_name().unwrap().to_str().unwrap();
+    let initial_project_dir = project_home.file_name().unwrap().to_str().unwrap();
 
     if args.port.is_none() {
         let port_str = prompt("Exposed port number")?;
@@ -131,32 +206,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         args.image_name = Some(prompt("Docker image name")?);
     }
 
-    // Try to auto-detect entrypoint if exactly one .py file exists
-    if args.entrypoint.is_none()
-        && let Ok(Some(py_file)) = find_single_py_file(project_home)
-    {
-        args.entrypoint = Some(py_file);
-    }
-
-    // Prompt for entrypoint if still not set
-    if args.entrypoint.is_none() {
-        args.entrypoint = Some(prompt("Python entrypoint script (e.g., main.py)")?);
-    }
-
     let name = args.name.as_ref().unwrap();
     let project_home = args.project_home.as_ref().unwrap();
     let image_name = args.image_name.as_ref().unwrap();
-    let entrypoint = args.entrypoint.as_ref().unwrap();
     let port = args.port.unwrap();
 
     println!("\n=== Configuration ===");
     println!("Project name: {}", name);
+    println!("Project type: {}", project_type);
     println!("Project home: {}", project_home.display());
-    println!("Project directory name: {}", project_dir);
+    println!("Project directory name: {}", initial_project_dir);
     println!("Base image: {}", args.base_image);
     println!("Port: {}", port);
     println!("Image name: {}", image_name);
-    println!("Entrypoint: {}", entrypoint);
+    if let Some(ref entrypoint) = args.entrypoint {
+        println!("Entrypoint: {}", entrypoint);
+    }
+    if let Some(ref mount_path) = args.mount_path {
+        println!("Mount path: {}", mount_path);
+    }
     println!("Push: {}", args.push);
     println!("Make tar.gz: {}", args.make_tar_gz);
     println!("=====================\n");
@@ -174,28 +242,75 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Copy scripts to temp directory with executable permissions
     copy_scripts_to_temp(&temp_dir)?;
 
-    // Copy project directory to temp directory
-    let project_dest = temp_dir.join(project_dir);
-    println!(
-        "Copying project from {} to {}",
-        project_home.display(),
-        project_dest.display()
-    );
-    copy_dir_recursive(project_home, &project_dest)?;
+    // Handle Node.js single service directory differently - create wrapper structure
+    let project_dir = if project_type == "foxx-service" {
+        let service_name = initial_project_dir;
 
-    // Extract Python version from base image name
-    let python_version = extract_python_version(&args.base_image);
+        // Create wrapper directory
+        let wrapper_dir = temp_dir.join("wrapper");
+        fs::create_dir_all(&wrapper_dir)?;
 
-    // Read and modify Dockerfile template
-    let dockerfile_template = include_str!("../Dockerfile.template");
-    let modified_dockerfile = modify_dockerfile(
-        dockerfile_template,
-        &args.base_image,
-        project_dir,
-        entrypoint,
-        port,
-        &python_version,
-    );
+        // Copy service directory into wrapper
+        let service_dest = wrapper_dir.join(service_name);
+        println!(
+            "Creating wrapper structure: copying {} to wrapper/{}",
+            project_home.display(),
+            service_name
+        );
+        copy_dir_recursive(project_home, &service_dest)?;
+
+        // Copy package.json from service to wrapper root for dependency installation
+        let service_package_json = service_dest.join("package.json");
+        if service_package_json.exists() {
+            let wrapper_package_json = wrapper_dir.join("package.json");
+            fs::copy(&service_package_json, &wrapper_package_json)?;
+            println!("Copied package.json to wrapper root for dependency installation");
+        }
+
+        // Generate services.json with mount path
+        let mount_path = args
+            .mount_path
+            .as_deref()
+            .ok_or("Mount path is required for foxx-service")?;
+        let services_json_content = generate_services_json(service_name, mount_path);
+        let services_json_path = wrapper_dir.join("services.json");
+        fs::write(&services_json_path, services_json_content)?;
+        println!("Generated services.json: {}", services_json_path.display());
+
+        "wrapper".to_string()
+    } else {
+        // Normal case - copy project directory as-is
+        let project_dest = temp_dir.join(initial_project_dir);
+        println!(
+            "Copying project from {} to {}",
+            project_home.display(),
+            project_dest.display()
+        );
+        copy_dir_recursive(project_home, &project_dest)?;
+        initial_project_dir.to_string()
+    };
+
+    // Choose Dockerfile template and modify based on project type
+    let modified_dockerfile = match project_type.as_str() {
+        "python" => {
+            let python_version = extract_python_version(&args.base_image);
+            let entrypoint = args.entrypoint.as_ref().unwrap();
+            let dockerfile_template = include_str!("../Dockerfile.template");
+            modify_dockerfile_python(
+                dockerfile_template,
+                &args.base_image,
+                &project_dir,
+                entrypoint,
+                port,
+                &python_version,
+            )
+        }
+        "foxx" | "foxx-service" | "nodejs" => {
+            let dockerfile_template = include_str!("../Dockerfile.nodejs.template");
+            modify_dockerfile_nodejs(dockerfile_template, &args.base_image, &project_dir, port)
+        }
+        _ => return Err("Unsupported project type".into()),
+    };
 
     // Write modified Dockerfile to temp directory
     let dockerfile_path = temp_dir.join("Dockerfile");
@@ -321,9 +436,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Generate Helm chart
     println!("\n=== Generating Helm Chart ===");
-    let (service_name, version) = read_service_info_from_pyproject(project_home)?;
-    println!("Service name from pyproject.toml: {}", service_name);
-    println!("Version from pyproject.toml: {}", version);
+    let (service_name, version) = match project_type.as_str() {
+        "python" => {
+            let (name, ver) = read_service_info_from_pyproject(project_home)?;
+            println!("Service name from pyproject.toml: {}", name);
+            println!("Version from pyproject.toml: {}", ver);
+            (name, ver)
+        }
+        "foxx" | "foxx-service" | "nodejs" => {
+            let (name, ver) = read_service_info_from_package_json(project_home)?;
+            println!("Service name from package.json: {}", name);
+            println!("Version from package.json: {}", ver);
+            (name, ver)
+        }
+        _ => return Err("Unsupported project type for Helm chart generation".into()),
+    };
 
     let chart_dir = temp_dir.join(&service_name);
 
@@ -400,7 +527,7 @@ fn extract_python_version(base_image: &str) -> String {
     "3.13".to_string()
 }
 
-fn modify_dockerfile(
+fn modify_dockerfile_python(
     template: &str,
     base_image: &str,
     project_dir: &str,
@@ -416,6 +543,71 @@ fn modify_dockerfile(
         .replace("{PYTHON_VERSION}", python_version)
 }
 
+fn modify_dockerfile_nodejs(
+    template: &str,
+    base_image: &str,
+    project_dir: &str,
+    port: u16,
+) -> String {
+    template
+        .replace("{BASE_IMAGE}", base_image)
+        .replace("{PROJECT_DIR}", project_dir)
+        .replace("{PORT}", &port.to_string())
+}
+
+fn detect_project_type(project_home: &Path) -> Result<String, Box<dyn std::error::Error>> {
+    let pyproject = project_home.join("pyproject.toml");
+    let package_json = project_home.join("package.json");
+    let services_json = project_home.join("services.json");
+
+    if pyproject.exists() {
+        Ok("python".to_string())
+    } else if package_json.exists() && services_json.exists() {
+        Ok("foxx".to_string())
+    } else if package_json.exists() {
+        // Single service directory - needs wrapper structure
+        Ok("foxx-service".to_string())
+    } else {
+        Err(format!(
+            "Could not detect project type. Expected pyproject.toml (Python) or package.json (Node.js) in: {}",
+            project_home.display()
+        )
+        .into())
+    }
+}
+
+fn generate_services_json(service_name: &str, mount_path: &str) -> String {
+    format!(
+        r#"[
+    {{
+        "mount": "{}",
+        "basePath": "{}"
+    }}
+]"#,
+        mount_path, service_name
+    )
+}
+
+fn read_name_from_package_json(project_home: &Path) -> Result<String, Box<dyn std::error::Error>> {
+    let package_json_path = project_home.join("package.json");
+
+    if !package_json_path.exists() {
+        return Err(format!("package.json not found in: {}", project_home.display()).into());
+    }
+
+    let content = fs::read_to_string(&package_json_path)?;
+    let value: serde_json::Value = serde_json::from_str(&content)?;
+
+    // Extract project name
+    let name = value
+        .get("name")
+        .and_then(|n| n.as_str())
+        .ok_or("Missing 'name' in package.json")?
+        .to_string();
+
+    Ok(name)
+}
+
 fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
     if !dst.exists() {
         fs::create_dir_all(dst)?;
@@ -426,8 +618,8 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
         let path = entry.path();
         let file_name = entry.file_name();
 
-        // Skip .venv directories
-        if file_name == ".venv" {
+        // Skip .venv directories (Python) and node_modules (Node.js)
+        if file_name == ".venv" || file_name == "node_modules" {
             continue;
         }
 
@@ -516,6 +708,35 @@ fn read_service_info_from_pyproject(
         .and_then(|p| p.get("version"))
         .and_then(|v| v.as_str())
         .ok_or("Missing 'project.version' in pyproject.toml")?
+        .to_string();
+
+    Ok((name, version))
+}
+
+fn read_service_info_from_package_json(
+    project_home: &Path,
+) -> Result<(String, String), Box<dyn std::error::Error>> {
+    let package_json_path = project_home.join("package.json");
+
+    if !package_json_path.exists() {
+        return Err(format!("package.json not found in: {}", project_home.display()).into());
+    }
+
+    let content = fs::read_to_string(&package_json_path)?;
+    let value: serde_json::Value = serde_json::from_str(&content)?;
+
+    // Extract project name
+    let name = value
+        .get("name")
+        .and_then(|n| n.as_str())
+        .ok_or("Missing 'name' in package.json")?
+        .to_string();
+
+    // Extract version (default to "1.0.0" if not present)
+    let version = value
+        .get("version")
+        .and_then(|v| v.as_str())
+        .unwrap_or("1.0.0")
         .to_string();
 
     Ok((name, version))

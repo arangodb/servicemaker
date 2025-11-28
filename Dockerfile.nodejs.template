@@ -1,0 +1,17 @@
+FROM {BASE_IMAGE}
+
+USER root
+
+COPY ./scripts /scripts
+COPY {PROJECT_DIR} /project/{PROJECT_DIR}
+RUN chown -R user:user /project/{PROJECT_DIR}
+
+USER user
+WORKDIR /project/{PROJECT_DIR}
+
+RUN /scripts/prepareproject-nodejs.sh
+
+EXPOSE {PORT}
+
+CMD ["node_modules/.bin/node-foxx"]
+

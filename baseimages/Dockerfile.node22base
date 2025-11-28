@@ -1,0 +1,33 @@
+FROM debian:trixie-slim
+
+COPY ./scripts /scripts
+
+# FIX: Convert Windows CRLF → LF and make scripts executable
+RUN apt-get update && apt-get install -y dos2unix \
+    && dos2unix /scripts/*.sh \
+    && chmod +x /scripts/*.sh
+
+# Now the script will run successfully
+RUN /scripts/debinstall.sh
+
+# Install Node.js 22
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y nodejs && \
+    apt-get clean
+
+WORKDIR /home/user
+USER user
+
+# Create base node_modules with node-foxx dependencies
+RUN mkdir -p base_node_modules && \
+    cd base_node_modules && \
+    npm init -y && \
+    npm install @arangodb/node-foxx@^0.0.1-alpha.0 \
+                @arangodb/node-foxx-launcher@^0.0.1-alpha.0 \
+                @arangodb/arangodb@^0.0.1-alpha.0
+
+# Create checksums for base node_modules
+RUN find base_node_modules/node_modules -type f -print0 | \
+    xargs -0 sha256sum > sums_sha256
+
+CMD [ "/scripts/entrypoint.sh" ]
