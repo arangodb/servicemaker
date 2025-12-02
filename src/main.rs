@@ -59,6 +59,10 @@ const SCRIPT_FILES: &[ScriptFile] = &[
         content: include_str!("../scripts/prepareproject-nodejs.sh"),
     },
     ScriptFile {
+        path: "check-base-dependencies.js",
+        content: include_str!("../scripts/check-base-dependencies.js"),
+    },
+    ScriptFile {
         path: "zipper.sh",
         content: include_str!("../scripts/zipper.sh"),
     },
