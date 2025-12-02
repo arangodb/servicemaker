@@ -574,14 +574,12 @@ fn detect_project_type(project_home: &Path) -> Result<String, Box<dyn std::error
 fn generate_services_json(_service_name: &str) -> String {
     // basePath is "." because services.json is in the same directory as the service
     // and node-foxx runs from that directory (WORKDIR)
-    format!(
-        r#"[
-    {{
+    r#"[
+    {
         "mount": "/",
         "basePath": "."
-    }}
-]"#
-    )
+    }
+]"#.to_string()
 }
 
 fn read_name_from_package_json(project_home: &Path) -> Result<String, Box<dyn std::error::Error>> {
