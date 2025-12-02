@@ -19,23 +19,17 @@ if test -e entrypoint ; then
   ENTRYPOINT=$(cat entrypoint)
   echo Running project ...
   
-  # Check if it's a Node.js/Foxx service
+  # Check if it's a Node.js/Foxx service (requires both package.json and services.json)
   if [ -f "package.json" ] && [ -f "services.json" ]; then
     # Node.js/Foxx service
     echo "Detected Node.js/Foxx service"
     if [ -f "node_modules/.bin/node-foxx" ]; then
       exec node_modules/.bin/node-foxx
+    elif [ -f "/home/user/node_modules/.bin/node-foxx" ]; then
+      # Fallback to base node-foxx binary
+      exec /home/user/node_modules/.bin/node-foxx
     else
       echo "Error: node-foxx not found. Make sure node_modules are installed."
-      exit 1
-    fi
-  elif [ -f "package.json" ]; then
-    # Generic Node.js service
-    echo "Detected Node.js service"
-    if [ -f "$ENTRYPOINT" ]; then
-      exec node "$ENTRYPOINT"
-    else
-      echo "Error: Entrypoint file not found: $ENTRYPOINT"
       exit 1
     fi
   else

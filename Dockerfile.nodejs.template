@@ -7,11 +7,18 @@ COPY {PROJECT_DIR} /project/{PROJECT_DIR}
 RUN chown -R user:user /project/{PROJECT_DIR}
 
 USER user
-WORKDIR /project/{PROJECT_DIR}
+WORKDIR /project/{WORKDIR}
+
+# Set NODE_PATH to resolve from project node_modules first, then base node_modules
+# This allows npm to install only missing/incompatible packages in project directory
+# while still accessing base packages from /home/user/node_modules
+ENV NODE_PATH={NODE_PATH}
 
 RUN /scripts/prepareproject-nodejs.sh
 
 EXPOSE {PORT}
 
-CMD ["node_modules/.bin/node-foxx"]
+# Run node-foxx from current directory (wrapper or project root)
+# Use base node-foxx binary (guaranteed to exist), NODE_PATH handles module resolution
+CMD ["/home/user/node_modules/.bin/node-foxx"]
 

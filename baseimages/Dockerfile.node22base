@@ -1,6 +1,13 @@
 FROM debian:trixie-slim
 
 COPY ./scripts /scripts
+
+# FIX: Convert Windows CRLF → LF and make scripts executable
+RUN apt-get update && apt-get install -y dos2unix \
+    && dos2unix /scripts/*.sh \
+    && chmod +x /scripts/*.sh
+
+# Now the script will run successfully
 RUN /scripts/debinstall.sh
 
 # Install Node.js 22
@@ -11,16 +18,34 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
 WORKDIR /home/user
 USER user
 
-# Create base node_modules with node-foxx dependencies
-RUN mkdir -p base_node_modules && \
-    cd base_node_modules && \
-    npm init -y && \
-    npm install @arangodb/node-foxx@^0.0.1-alpha.0 \
-                @arangodb/node-foxx-launcher@^0.0.1-alpha.0 \
-                @arangodb/arangodb@^0.0.1-alpha.0
+# Create base node_modules with standard packages (immutable, pre-scanned)
+# This location is used by all projects and should never be modified
+# Standard packages are selected to benefit most projects while keeping image size reasonable
+RUN npm init -y && \
+    npm install \
+        # ArangoDB/Foxx core
+        @arangodb/node-foxx@^0.0.1-alpha.0 \
+        @arangodb/node-foxx-launcher@^0.0.1-alpha.0 \
+        @arangodb/arangodb@^0.0.1-alpha.0 \
+        # Essential utilities
+        lodash \
+        dayjs \
+        uuid \
+        dotenv \
+        # HTTP clients
+        axios \
+        # Validation
+        joi \
+        # Logging
+        winston \
+        # Async utilities
+        async \
+        # Security
+        jsonwebtoken \
+        bcrypt
 
-# Create checksums for base node_modules
-RUN find base_node_modules/node_modules -type f -print0 | \
+# Create checksums for base node_modules (for tracking, base remains immutable)
+RUN find node_modules -type f -print0 | \
     xargs -0 sha256sum > sums_sha256
 
 CMD [ "/scripts/entrypoint.sh" ]

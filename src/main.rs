@@ -6,6 +6,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use toml::Value;
 
+// Default base images
+const DEFAULT_PYTHON_BASE_IMAGE: &str = "arangodb/py13base:latest";
+const DEFAULT_NODEJS_BASE_IMAGE: &str = "arangodb/node22base:latest";
+
 // Embedded chart files
 struct ChartFile {
     path: &'static str,
@@ -73,8 +77,8 @@ struct Args {
     project_home: Option<PathBuf>,
 
     /// Base Docker image
-    #[arg(long, default_value = "arangodb/py13base:latest")]
-    base_image: String,
+    #[arg(long)]
+    base_image: Option<String>,
 
     /// Exposed port number
     #[arg(long)]
@@ -95,14 +99,13 @@ struct Args {
     /// Whether to create a tar.gz file with project files and virtual environment changes
     #[arg(long, default_value = "false")]
     make_tar_gz: bool,
-
-    /// Mount path for the service (required for Foxx services, e.g., /itz)
-    #[arg(long)]
-    mount_path: Option<String>,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = Args::parse();
+
+    // Track if base_image was explicitly set by user
+    let base_image_explicitly_set = args.base_image.is_some();
 
     // Get project home first (prompt if needed)
     if args.project_home.is_none() {
@@ -141,6 +144,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if args.entrypoint.is_none() {
                 args.entrypoint = Some(prompt("Python entrypoint script (e.g., main.py)")?);
             }
+
+            // Set default base image for Python if not explicitly set
+            if !base_image_explicitly_set {
+                args.base_image = Some(DEFAULT_PYTHON_BASE_IMAGE.to_string());
+            }
         }
         "foxx" => {
             // Multi-service structure (has services.json)
@@ -151,13 +159,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 args.name = Some(name);
             }
 
-            // Set default base image for Node.js if not specified
-            if args.base_image == "arangodb/py13base:latest" {
-                args.base_image = "arangodb/node22base:latest".to_string();
+            // Set default base image for Node.js if not explicitly set
+            if !base_image_explicitly_set {
+                args.base_image = Some(DEFAULT_NODEJS_BASE_IMAGE.to_string());
             }
         }
-        "foxx-service" | "nodejs" => {
-            // Single service directory - will create wrapper structure
+        "foxx-service" => {
+            // Single service directory - will generate services.json
             let service_name = project_home.file_name().unwrap().to_str().unwrap();
 
             // Try to get name from package.json if not provided
@@ -169,20 +177,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
 
-            // Set default base image for Node.js if not specified
-            if args.base_image == "arangodb/py13base:latest" {
-                args.base_image = "arangodb/node22base:latest".to_string();
-            }
-
-            // Prompt for mount path if not provided (for foxx-service)
-            if project_type == "foxx-service" && args.mount_path.is_none() {
-                let default_mount = format!("/{}", service_name.to_lowercase());
-                let mount_input = prompt(&format!("Mount path (default: {})", default_mount))?;
-                args.mount_path = Some(if mount_input.is_empty() {
-                    default_mount
-                } else {
-                    mount_input
-                });
+            // Set default base image for Node.js if not explicitly set
+            if !base_image_explicitly_set {
+                args.base_image = Some(DEFAULT_NODEJS_BASE_IMAGE.to_string());
             }
         }
         _ => {
@@ -210,20 +207,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let project_home = args.project_home.as_ref().unwrap();
     let image_name = args.image_name.as_ref().unwrap();
     let port = args.port.unwrap();
+    let base_image = args.base_image.as_ref().unwrap();
 
     println!("\n=== Configuration ===");
     println!("Project name: {}", name);
     println!("Project type: {}", project_type);
     println!("Project home: {}", project_home.display());
     println!("Project directory name: {}", initial_project_dir);
-    println!("Base image: {}", args.base_image);
+    println!("Base image: {}", base_image);
     println!("Port: {}", port);
     println!("Image name: {}", image_name);
     if let Some(ref entrypoint) = args.entrypoint {
         println!("Entrypoint: {}", entrypoint);
-    }
-    if let Some(ref mount_path) = args.mount_path {
-        println!("Mount path: {}", mount_path);
     }
     println!("Push: {}", args.push);
     println!("Make tar.gz: {}", args.make_tar_gz);
@@ -242,42 +237,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Copy scripts to temp directory with executable permissions
     copy_scripts_to_temp(&temp_dir)?;
 
-    // Handle Node.js single service directory differently - create wrapper structure
-    let project_dir = if project_type == "foxx-service" {
+    // Handle Node.js single service directory - copy directly and generate services.json
+    let (service_name_opt, project_dir) = if project_type == "foxx-service" {
         let service_name = initial_project_dir;
 
-        // Create wrapper directory
-        let wrapper_dir = temp_dir.join("wrapper");
-        fs::create_dir_all(&wrapper_dir)?;
-
-        // Copy service directory into wrapper
-        let service_dest = wrapper_dir.join(service_name);
+        // Copy service directory directly (no wrapper folder)
+        let project_dest = temp_dir.join(service_name);
         println!(
-            "Creating wrapper structure: copying {} to wrapper/{}",
+            "Copying service from {} to {}",
             project_home.display(),
-            service_name
+            project_dest.display()
         );
-        copy_dir_recursive(project_home, &service_dest)?;
+        copy_dir_recursive(project_home, &project_dest)?;
 
-        // Copy package.json from service to wrapper root for dependency installation
-        let service_package_json = service_dest.join("package.json");
-        if service_package_json.exists() {
-            let wrapper_package_json = wrapper_dir.join("package.json");
-            fs::copy(&service_package_json, &wrapper_package_json)?;
-            println!("Copied package.json to wrapper root for dependency installation");
-        }
-
-        // Generate services.json with mount path
-        let mount_path = args
-            .mount_path
-            .as_deref()
-            .ok_or("Mount path is required for foxx-service")?;
-        let services_json_content = generate_services_json(service_name, mount_path);
-        let services_json_path = wrapper_dir.join("services.json");
+        // Generate services.json with mount path "/" directly in service directory
+        let services_json_content = generate_services_json(service_name);
+        let services_json_path = project_dest.join("services.json");
         fs::write(&services_json_path, services_json_content)?;
         println!("Generated services.json: {}", services_json_path.display());
 
-        "wrapper".to_string()
+        // Store service_name for later use in Dockerfile generation
+        (Some(service_name.to_string()), service_name.to_string())
     } else {
         // Normal case - copy project directory as-is
         let project_dest = temp_dir.join(initial_project_dir);
@@ -287,27 +267,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             project_dest.display()
         );
         copy_dir_recursive(project_home, &project_dest)?;
-        initial_project_dir.to_string()
+        (None, initial_project_dir.to_string())
     };
 
     // Choose Dockerfile template and modify based on project type
     let modified_dockerfile = match project_type.as_str() {
         "python" => {
-            let python_version = extract_python_version(&args.base_image);
+            let python_version = extract_python_version(base_image);
             let entrypoint = args.entrypoint.as_ref().unwrap();
             let dockerfile_template = include_str!("../Dockerfile.template");
             modify_dockerfile_python(
                 dockerfile_template,
-                &args.base_image,
+                base_image,
                 &project_dir,
                 entrypoint,
                 port,
                 &python_version,
             )
         }
-        "foxx" | "foxx-service" | "nodejs" => {
+        "foxx" | "foxx-service" => {
             let dockerfile_template = include_str!("../Dockerfile.nodejs.template");
-            modify_dockerfile_nodejs(dockerfile_template, &args.base_image, &project_dir, port)
+            modify_dockerfile_nodejs(
+                dockerfile_template,
+                base_image,
+                &project_dir,
+                port,
+                service_name_opt.as_deref(),
+            )
         }
         _ => return Err("Unsupported project type".into()),
     };
@@ -443,7 +429,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Version from pyproject.toml: {}", ver);
             (name, ver)
         }
-        "foxx" | "foxx-service" | "nodejs" => {
+        "foxx" | "foxx-service" => {
             let (name, ver) = read_service_info_from_package_json(project_home)?;
             println!("Service name from package.json: {}", name);
             println!("Version from package.json: {}", ver);
@@ -548,11 +534,20 @@ fn modify_dockerfile_nodejs(
     base_image: &str,
     project_dir: &str,
     port: u16,
+    _service_name: Option<&str>,
 ) -> String {
+    // Simplified structure:
+    // - COPY copies the service directory directly (services.json is inside)
+    // - WORKDIR is /project/{service-name} (where services.json is located)
+    // - node_modules is in /project/{service-name}/node_modules
+    let node_path = format!("/project/{}/node_modules:/home/user/node_modules", project_dir);
+    
     template
         .replace("{BASE_IMAGE}", base_image)
         .replace("{PROJECT_DIR}", project_dir)
+        .replace("{WORKDIR}", project_dir)
         .replace("{PORT}", &port.to_string())
+        .replace("{NODE_PATH}", &node_path)
 }
 
 fn detect_project_type(project_home: &Path) -> Result<String, Box<dyn std::error::Error>> {
@@ -576,15 +571,16 @@ fn detect_project_type(project_home: &Path) -> Result<String, Box<dyn std::error
     }
 }
 
-fn generate_services_json(service_name: &str, mount_path: &str) -> String {
+fn generate_services_json(_service_name: &str) -> String {
+    // basePath is "." because services.json is in the same directory as the service
+    // and node-foxx runs from that directory (WORKDIR)
     format!(
         r#"[
     {{
-        "mount": "{}",
-        "basePath": "{}"
+        "mount": "/",
+        "basePath": "."
     }}
-]"#,
-        mount_path, service_name
+]"#
     )
 }
 

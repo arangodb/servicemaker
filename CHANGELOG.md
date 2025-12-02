@@ -22,13 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Executes `prepareproject-nodejs.sh` for dependency management
 
 - **Dependency Management Script**: Added `scripts/prepareproject-nodejs.sh`
-  - Copies base `node_modules` from base image
-  - Installs project-specific dependencies from `package.json`
-  - Ensures `node-foxx` binary is always available with multiple safety checks
-  - Tracks new dependencies using SHA256 checksums
-  - Separates base packages from project packages
-  - Includes automatic recovery mechanism if base packages are removed during `npm install`
-  - Handles `package.json` copying to wrapper root for proper dependency installation
+  - Base `node_modules` at `/home/user/node_modules` is immutable and never copied
+  - Installs only missing or incompatible packages to project's `node_modules`
+  - Uses NODE_PATH for module resolution (project first, then base)
+  - npm automatically handles version conflicts (project version takes precedence)
+  - Verifies `node-foxx` binary accessibility from either location
+  - Keeps base image immutable for security scanning
 
 - **Project Type Detection**: Extended `detect_project_type()` to support:
   - `python`: Projects with `pyproject.toml`
@@ -38,16 +37,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Wrapper Structure Generation**: Automatic wrapper creation for single service directories
   - Creates `wrapper/` directory structure
-  - Copies service directory into `wrapper/{service-name}/`
-  - Generates `services.json` automatically with mount path configuration
-  - Copies `package.json` to wrapper root for dependency installation
+  - Copies service directory directly to `/project/{service-name}/`
+  - Generates `services.json` automatically with mount path "/" in the service directory
+  - `package.json` and `services.json` are in the same directory where `node_modules` will be created
 
 - **CLI Arguments**:
-  - `--mount-path`: Required for `foxx-service` type, specifies the mount path for the Foxx service
 
 - **Services JSON Generation**: Added `generate_services_json()` function
   - Automatically generates `services.json` for single service directories
-  - Configures mount path and base path for Foxx services
+  - Configures mount path as "/" and base path for Foxx services
 
 - **Package.json Support**: Added functions to read Node.js project metadata
   - `read_name_from_package_json()`: Extracts project name from `package.json`
@@ -89,26 +87,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Technical Details
 
-- **Base Image Structure**:
-  - Base `node_modules` located at `/home/user/base_node_modules/node_modules`
-  - Checksums stored at `/home/user/sums_sha256` for dependency tracking
-  - Base packages: `@arangodb/node-foxx@^0.0.1-alpha.0`, `@arangodb/node-foxx-launcher@^0.0.1-alpha.0`, `@arangodb/arangodb@^0.0.1-alpha.0`
-
-- **Wrapper Structure**:
-  ```
-  wrapper/
-  ├── package.json          # Copied from service for npm install
-  ├── services.json         # Auto-generated with mount path
-  ├── node_modules/         # Installed dependencies (base + project)
-  └── {service-name}/       # Service directory
-      ├── package.json
-      └── ...
-  ```
-
-- **Dependency Tracking**:
-  - Uses SHA256 checksums to identify new files vs. base files
-  - New project dependencies copied to `/project/node_modules/` for tracking
-  - Base packages remain in base image for efficiency
+For detailed information about base image structure, service architecture, and module resolution, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## [0.9.2] - Previous Release
 
