@@ -90,15 +90,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **services.json basePath**: Fixed incorrect basePath in generated `services.json`
-  - Changed from service name to "." (current directory)
-  - Fixes path resolution issue where `node-foxx` was looking in wrong location for `manifest.json`
-
-- **Base Image Default Handling**: Improved robustness of base image default selection
-  - Replaced magic string comparisons with compile-time constants
-  - Added explicit tracking of user intent (whether base image was explicitly set)
-  - Prevents breakage if default values change in the future
-
 - **Windows Compatibility**: Fixed Windows build issues in `src/main.rs`
   - Added conditional compilation for Unix-specific file permissions (`#[cfg(unix)]`)
   - Windows builds now skip `set_mode()` calls that are Unix-only
