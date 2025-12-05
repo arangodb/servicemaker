@@ -31,6 +31,7 @@ spec:
         release: {{ .Release.Name }}
         type: deployment
         profiles.arangodb.com/deployment: deployment
+        integration.profiles.arangodb.com/authn: v1
     spec:
       containers:
         - name: {SERVICE_NAME}
