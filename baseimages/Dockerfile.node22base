@@ -16,28 +16,29 @@ USER user
 # Standard packages are selected to benefit most projects while keeping image size reasonable
 RUN npm init -y && \
     npm install \
-        # ArangoDB/Foxx core
-        @arangodb/node-foxx@^0.0.1-alpha.0 \
-        @arangodb/node-foxx-launcher@^0.0.1-alpha.0 \
-        @arangodb/arangodb@^0.0.1-alpha.0 \
-        # Dependency checking utility
-        semver@^7.6.3 \
-        # Essential utilities
-        lodash@^4.17.21 \
-        dayjs@^1.11.10 \
-        uuid@^9.0.1 \
-        dotenv@^16.4.5 \
-        # HTTP clients
-        axios@^1.7.2 \
-        # Validation
-        joi@^17.13.3 \
-        # Logging
-        winston@^3.15.0 \
-        # Async utilities
-        async@^3.2.5 \
-        # Security
-        jsonwebtoken@^9.0.2 \
-        bcrypt@^5.1.1
+    # ArangoDB/Foxx core
+    @arangodb/node-foxx@^0.0.1-alpha.0 \
+    @arangodb/node-foxx-launcher@^0.0.1-alpha.0 \
+    @arangodb/arangodb@^0.0.1-alpha.0 \
+    arangojs@^10.1.2 \
+    # Dependency checking utility
+    semver@^7.6.3 \
+    # Essential utilities
+    lodash@^4.17.21 \
+    dayjs@^1.11.10 \
+    uuid@^9.0.1 \
+    dotenv@^16.4.5 \
+    # HTTP clients
+    axios@^1.7.2 \
+    # Validation
+    joi@^17.13.3 \
+    # Logging
+    winston@^3.15.0 \
+    # Async utilities
+    async@^3.2.5 \
+    # Security
+    jsonwebtoken@^9.0.2 \
+    bcrypt@^5.1.1
 
 # Create checksums for base node_modules (for tracking, base remains immutable)
 RUN find node_modules -type f -print0 | \

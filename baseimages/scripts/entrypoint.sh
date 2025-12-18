@@ -32,6 +32,10 @@ if test -e entrypoint ; then
       echo "Error: node-foxx not found. Make sure node_modules are installed."
       exit 1
     fi
+  elif [ -f "package.json" ] && [ ! -f "services.json" ] && [ ! -f "manifest.json" ] && grep -q '"express"' package.json 2>/dev/null; then
+    # Express.js application
+    echo "Detected Express.js application"
+    exec node $ENTRYPOINT
   else
     # Python service (existing logic)
     echo "Detected Python service"

@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Express Application Support
+- **Express Project Detection**: Added automatic detection of Express.js applications
+  - Detects Express apps by checking for `express` dependency in `package.json`
+  - Requires absence of `services.json` and `manifest.json` (distinguishes from Foxx services)
+  - Project type: `express`
+  
+- **Express Dockerfile Template**: Created `Dockerfile.express.template` for Express applications
+  - Uses Node.js 22 base image (`arangodb/node22base:latest`)
+  - Runs Express apps directly with `node {ENTRYPOINT}` instead of `node-foxx`
+  - No `services.json` or `manifest.json` required
+  - Entrypoint auto-detected from `package.json` `main` field or `start` script
+  - Defaults to `index.js` if not found
+
+- **Express Preparation Script**: Added `scripts/prepareproject-express.sh`
+  - Similar to Node.js preparation but without `node-foxx` checks
+  - Installs only missing/incompatible dependencies
+  - Uses base `node_modules` from base image via NODE_PATH
+
+- **Environment Variables from `.env.example`**: Added support for reading environment variables
+  - Automatically reads `.env.example` file if present in project root
+  - Parses `KEY=VALUE` format with support for quoted values
+  - Injects environment variables as `ENV` directives in Dockerfile
+  - Supports comments (lines starting with `#`) and empty lines
+  - Handles values with spaces or special characters (auto-quotes for Docker)
+  - Works for all project types (Python, Foxx, Express)
+
 #### Node.js/Foxx Service Support
 - **Node.js Base Image**: Added `Dockerfile.node22base` for Node.js 22 base image with pre-installed packages
   - Installs Node.js 22 from NodeSource
@@ -36,9 +62,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Project Type Detection**: Extended `detect_project_type()` to support:
   - `python`: Projects with `pyproject.toml`
+  - `express`: Express.js applications with `express` dependency, no `services.json` or `manifest.json`
   - `foxx`: Multi-service projects with `package.json` and `services.json` (both required)
   - `foxx-service`: Single service directory with `package.json` only (auto-generates `services.json`)
-  - Execution stops with error if `services.json` is missing for Node.js projects
 
 - **Service Structure Generation**: Simplified structure for single service directories
   - Copies service directory directly to `/project/{service-name}/` (no wrapper folder)
@@ -66,16 +92,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Main Application Logic**: Extended `src/main.rs` to support Node.js/Foxx projects
+- **Main Application Logic**: Extended `src/main.rs` to support Node.js/Foxx and Express projects
+  - Added Express project type detection and handling
+  - Added entrypoint auto-detection for Express apps from `package.json`
+  - Added environment variable reading from `.env.example` for all project types
+  - Added Dockerfile modification functions for Express apps (`modify_dockerfile_express`)
+  - Added Express preparation script to embedded scripts list
   - Added project type detection requiring both `package.json` and `services.json` for `foxx` type
-  - Error handling: execution stops if `services.json` is missing for Node.js projects
   - Simplified file copying: projects are copied as-is (no wrapper structure generation)
   - Base image default handling: Introduced compile-time constants (`DEFAULT_PYTHON_BASE_IMAGE`, `DEFAULT_NODEJS_BASE_IMAGE`)
   - Explicit user intent tracking: Changed `base_image` to `Option<String>` to detect explicit user choices
   - Smart defaults: Only sets project-type-specific defaults when user hasn't explicitly set base image
-  - Modified Dockerfile generation to use Node.js template for Foxx projects
-  - Updated Helm chart generation to support Node.js/Foxx projects
-  - Added `prepareproject-nodejs.sh` and `check-base-dependencies.js` to embedded scripts list
+  - Modified Dockerfile generation to use appropriate template based on project type
+  - Updated Helm chart generation to support all project types (Python, Express, Foxx)
+  - Added `prepareproject-express.sh` to embedded scripts list
   - No entrypoint required for Foxx services (uses `node-foxx` from base image)
 
 - **Entrypoint Script**: Enhanced `baseimages/scripts/entrypoint.sh` to support Node.js/Foxx services
@@ -96,7 +126,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Technical Details
 
-For detailed information about base image structure, service architecture, and module resolution, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+For detailed information about:
+- **Node.js/Foxx Services**: Base image structure, service architecture, and module resolution - see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- **Express Applications**: Express app architecture, detection, and deployment - see [docs/ARCHITECTURE_EXPRESS.md](docs/ARCHITECTURE_EXPRESS.md)
+- **Service Comparison**: Differences between Node-Foxx and Express+Arangojs services - see [docs/SERVICE_COMPARISON.md](docs/SERVICE_COMPARISON.md)
 
 ## [0.9.2] - Previous Release
 
@@ -113,14 +146,16 @@ For detailed information about base image structure, service architecture, and m
 ## Version History
 
 - **0.9.2**: Initial release with Python support
-- **Unreleased**: Added Node.js/Foxx service support
+- **Unreleased**: Added Node.js/Foxx service support and Express application support
 
 ---
 
 ## Notes
 
 - All changes maintain backward compatibility with existing Python projects
-- Node.js support is additive and does not affect Python service functionality
+- Node.js support (both Foxx and Express) is additive and does not affect Python service functionality
+- Express applications are detected automatically and require no special configuration files
+- Environment variables from `.env.example` are automatically injected into Docker images
 - Base images must be built separately using `baseimages/build.sh`
 - Windows users should use WSL or Linux environment for building base images
 
