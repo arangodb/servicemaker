@@ -7,7 +7,7 @@ WORKDIR /home/user
 USER user
 
 RUN /scripts/prepareuv.sh 3.13 --extra-index-url https://pypi.nvidia.com/ \
-   python-arango phenolrs networkx \
+   python-arango phenolrs networkx pyarmor \
    cugraph-cu12 
 
 CMD [ "/scripts/entrypoint.sh" ]

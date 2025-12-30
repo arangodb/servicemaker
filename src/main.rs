@@ -54,6 +54,10 @@ const SCRIPT_FILES: &[ScriptFile] = &[
         path: "zipper.sh",
         content: include_str!("../scripts/zipper.sh"),
     },
+    ScriptFile {
+        path: "obfuscate_python.sh",
+        content: include_str!("../scripts/obfuscate_python.sh"),
+    },
 ];
 
 /// A tool to wrap Python projects as Docker services
@@ -91,6 +95,9 @@ struct Args {
     /// Whether to create a tar.gz file with project files and virtual environment changes
     #[arg(long, default_value = "false")]
     make_tar_gz: bool,
+
+    #[arg(long, default_value = "false")]
+    obfuscate: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -184,7 +191,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let modified_dockerfile = modify_dockerfile(
         dockerfile_template,
         &args.base_image,
-        project_dir,
         entrypoint,
         port,
         &python_version,
@@ -197,8 +203,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Build Docker image
     println!("\nBuilding Docker image...");
+    let obfuscate_arg = format!("OBFUSCATE={}", args.obfuscate);
     let build_status = Command::new("docker")
-        .args(["build", "-f", "./Dockerfile", "-t", image_name, "."])
+        .args([
+            "build",
+            "--build-arg",
+            &obfuscate_arg,
+            "-f",
+            "./Dockerfile",
+            "-t",
+            image_name,
+            ".",
+        ])
         .current_dir(&temp_dir)
         .status()?;
 
@@ -342,14 +358,12 @@ fn extract_python_version(base_image: &str) -> String {
 fn modify_dockerfile(
     template: &str,
     base_image: &str,
-    project_dir: &str,
     entrypoint: &str,
     port: u16,
     python_version: &str,
 ) -> String {
     template
         .replace("{BASE_IMAGE}", base_image)
-        .replace("{PROJECT_DIR}", project_dir)
         .replace("{PORT}", &port.to_string())
         .replace("{ENTRYPOINT}", entrypoint)
         .replace("{PYTHON_VERSION}", python_version)
@@ -365,17 +379,20 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
         let path = entry.path();
         let file_name = entry.file_name();
 
-        // Skip .venv directories
-        if file_name == ".venv" {
-            continue;
-        }
+        // Skip .venv, .git, .vscode directories
+        match file_name.to_str() {
+            Some(name) if name.starts_with(".") => {
+                continue;
+            }
+            _ => {
+                let dest_path = dst.join(&file_name);
 
-        let dest_path = dst.join(&file_name);
-
-        if path.is_dir() {
-            copy_dir_recursive(&path, &dest_path)?;
-        } else {
-            fs::copy(&path, &dest_path)?;
+                if path.is_dir() {
+                    copy_dir_recursive(&path, &dest_path)?;
+                } else {
+                    fs::copy(&path, &dest_path)?;
+                }
+            }
         }
     }
 

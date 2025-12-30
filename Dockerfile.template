@@ -1,18 +1,56 @@
-FROM {BASE_IMAGE}
+# Stage 1: Build and optionally obfuscate
+FROM {BASE_IMAGE} AS builder
+
+ARG OBFUSCATE=false
 
 USER root
 
 COPY ./scripts /scripts
-COPY {PROJECT_DIR} /project/{PROJECT_DIR}
+COPY ./project /project
 RUN ls -lR /project
 RUN chown -R user: /project && chmod 755 /project
 
 USER user
-WORKDIR /project/{PROJECT_DIR}
+WORKDIR /project
 
+# Install dependencies first
 RUN /scripts/prepareproject.sh
-RUN ln -s /project/{PROJECT_DIR}/{ENTRYPOINT} /project/entrypoint
+
+# Obfuscate if requested (after dependencies are installed)
+RUN if [ "$OBFUSCATE" = "true" ]; then \
+      echo "Starting obfuscation..." && \
+      /scripts/obfuscate_python.sh /project /tmp/obfuscated && \
+      echo "Removing original Python source files..." && \
+      find /project -name "*.py" -type f ! -path "*/the_venv/*" ! -path "*/.venv/*" -delete && \
+      echo "Copying obfuscated files..." && \
+      cp -r /tmp/obfuscated/project/* . && \
+      ENTRYPOINT_DIR=$(dirname "{ENTRYPOINT}") && \
+      mkdir -p "/project/$ENTRYPOINT_DIR" && \
+      cp -r /tmp/obfuscated/pyarmor_runtime_* "/project/$ENTRYPOINT_DIR/" && \
+      rm -rf /tmp/obfuscated && \
+      echo "Obfuscation complete"; \
+    fi
+
+# Stage 2: Runtime (clean image without source code in layers)
+FROM {BASE_IMAGE}
+
+ARG OBFUSCATE=false
+ENV OBFUSCATE=${OBFUSCATE}
+
+USER root
+
+COPY ./scripts /scripts
+# Copy the processed project from builder (either obfuscated or original)
+COPY --from=builder /project /project
+RUN chown -R user: /project && chmod 755 /project
+
+USER user
+WORKDIR /project
+
+# Create entrypoint symlink
+RUN ln -sf /project/{ENTRYPOINT} /project/entrypoint
 
 EXPOSE {PORT}
 
-CMD ["/bin/bash", "-c", ". /home/user/.local/bin/env && . /home/user/the_venv/bin/activate && export PYTHONPATH=/project/the_venv/lib/python{PYTHON_VERSION}/site-packages && uv run --active {ENTRYPOINT}"]
+# Unified execution: always use venv activation + python
+CMD ["/bin/bash", "-c", ". /home/user/.local/bin/env && . /home/user/the_venv/bin/activate && python {ENTRYPOINT}"]
