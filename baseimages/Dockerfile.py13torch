@@ -1,4 +1,4 @@
-FROM debian:trixie-slim
+FROM ubuntu:24.04
 
 COPY ./scripts /scripts
 RUN /scripts/debinstall.sh
