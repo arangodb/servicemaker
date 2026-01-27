@@ -317,6 +317,9 @@
     </div>
 
     <script>
+        // Calculate base URL from current path (remove /ui suffix)
+        const baseUrl = window.location.pathname.replace(/\/ui\/?$/, '') || '';
+
         const tokenInput = document.getElementById('token');
         const tokenStatus = document.getElementById('tokenStatus');
 
@@ -383,7 +386,7 @@
             hideStatus('writeStatus');
 
             try {
-                const response = await fetch('/write', {
+                const response = await fetch(`${baseUrl}/write`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -417,7 +420,7 @@
             hideStatus('readStatus');
 
             try {
-                const response = await fetch('/read', {
+                const response = await fetch(`${baseUrl}/read`, {
                     method: 'GET',
                     headers: {
                         'Authorization': `Bearer ${token}`
@@ -476,7 +479,7 @@
             hideStatus('readStatus');
 
             try {
-                const response = await fetch('/delete', {
+                const response = await fetch(`${baseUrl}/delete`, {
                     method: 'DELETE',
                     headers: {
                         'Authorization': `Bearer ${token}`
