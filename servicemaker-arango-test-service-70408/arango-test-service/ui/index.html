@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ArangoDB Test Service - Demo</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #e4e4e4;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        header h1 {
+            color: #00d4aa;
+            font-size: 2rem;
+            margin-bottom: 8px;
+        }
+
+        header p {
+            color: #888;
+            font-size: 0.95rem;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .card h2 {
+            color: #00d4aa;
+            font-size: 1.1rem;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .card h2::before {
+            content: '';
+            width: 4px;
+            height: 18px;
+            background: #00d4aa;
+            border-radius: 2px;
+        }
+
+        label {
+            display: block;
+            color: #aaa;
+            font-size: 0.85rem;
+            margin-bottom: 6px;
+        }
+
+        input[type="text"],
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.3);
+            color: #fff;
+            font-size: 0.9rem;
+            font-family: 'Monaco', 'Menlo', monospace;
+            transition: border-color 0.2s;
+        }
+
+        input[type="text"]:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #00d4aa;
+        }
+
+        textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: #00d4aa;
+            color: #1a1a2e;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: #00f5c4;
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background: #3a86ff;
+            color: #fff;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #5a9fff;
+            transform: translateY(-1px);
+        }
+
+        .btn-danger {
+            background: #ff4757;
+            color: #fff;
+        }
+
+        .btn-danger:hover:not(:disabled) {
+            background: #ff6b7a;
+            transform: translateY(-1px);
+        }
+
+        .status {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-size: 0.9rem;
+            display: none;
+        }
+
+        .status.show {
+            display: block;
+        }
+
+        .status.success {
+            background: rgba(0, 212, 170, 0.15);
+            border: 1px solid rgba(0, 212, 170, 0.3);
+            color: #00d4aa;
+        }
+
+        .status.error {
+            background: rgba(255, 71, 87, 0.15);
+            border: 1px solid rgba(255, 71, 87, 0.3);
+            color: #ff4757;
+        }
+
+        .status.info {
+            background: rgba(58, 134, 255, 0.15);
+            border: 1px solid rgba(58, 134, 255, 0.3);
+            color: #3a86ff;
+        }
+
+        .documents-container {
+            margin-top: 15px;
+        }
+
+        .document {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-left: 3px solid #00d4aa;
+        }
+
+        .document-key {
+            color: #00d4aa;
+            font-size: 0.8rem;
+            margin-bottom: 8px;
+        }
+
+        .document-content {
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.85rem;
+            white-space: pre-wrap;
+            word-break: break-all;
+            color: #ddd;
+        }
+
+        .no-documents {
+            text-align: center;
+            color: #666;
+            padding: 30px;
+            font-style: italic;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid transparent;
+            border-top-color: currentColor;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .token-status {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-left: 8px;
+        }
+
+        .token-status.set {
+            background: #00d4aa;
+            box-shadow: 0 0 8px #00d4aa;
+        }
+
+        .token-status.unset {
+            background: #ff4757;
+        }
+
+        .actions-row {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #555;
+            font-size: 0.8rem;
+        }
+
+        @media (max-width: 600px) {
+            .btn-group {
+                flex-direction: column;
+            }
+
+            button {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>ArangoDB Test Service</h1>
+            <p>Demo UI for testing write, read, and delete operations</p>
+        </header>
+
+        <div class="card">
+            <h2>Authentication</h2>
+            <label for="token">JWT Token <span class="token-status unset" id="tokenStatus"></span></label>
+            <input type="text" id="token" placeholder="Enter your ArangoDB JWT token..." autocomplete="off">
+            <div class="status" id="tokenMessage"></div>
+        </div>
+
+        <div class="card">
+            <h2>Write Document</h2>
+            <label for="jsonInput">JSON Document</label>
+            <textarea id="jsonInput" placeholder='{"name": "example", "value": 42}'></textarea>
+            <div class="actions-row">
+                <button class="btn-primary" onclick="writeDocument()">
+                    <span id="writeIcon">+</span> Write Document
+                </button>
+            </div>
+            <div class="status" id="writeStatus"></div>
+        </div>
+
+        <div class="card">
+            <h2>Documents</h2>
+            <div class="btn-group">
+                <button class="btn-secondary" onclick="readDocuments()">
+                    <span id="readIcon">&#x21bb;</span> Refresh Documents
+                </button>
+                <button class="btn-danger" onclick="deleteDatabase()">
+                    <span id="deleteIcon">&#x2715;</span> Delete Database
+                </button>
+            </div>
+            <div class="status" id="readStatus"></div>
+            <div class="documents-container" id="documentsContainer">
+                <div class="no-documents">Click "Refresh Documents" to load data</div>
+            </div>
+        </div>
+
+        <footer>
+            ArangoDB Test Service Demo
+        </footer>
+    </div>
+
+    <script>
+        const tokenInput = document.getElementById('token');
+        const tokenStatus = document.getElementById('tokenStatus');
+
+        // Update token status indicator
+        tokenInput.addEventListener('input', function() {
+            if (this.value.trim()) {
+                tokenStatus.className = 'token-status set';
+            } else {
+                tokenStatus.className = 'token-status unset';
+            }
+        });
+
+        function getToken() {
+            const token = tokenInput.value.trim();
+            if (!token) {
+                showStatus('tokenMessage', 'Please enter a JWT token', 'error');
+                return null;
+            }
+            return token;
+        }
+
+        function showStatus(elementId, message, type) {
+            const el = document.getElementById(elementId);
+            el.textContent = message;
+            el.className = `status show ${type}`;
+        }
+
+        function hideStatus(elementId) {
+            const el = document.getElementById(elementId);
+            el.className = 'status';
+        }
+
+        function setLoading(iconId, loading) {
+            const icon = document.getElementById(iconId);
+            if (loading) {
+                icon.innerHTML = '<span class="loading"></span>';
+            } else {
+                // Restore original icons
+                if (iconId === 'writeIcon') icon.textContent = '+';
+                if (iconId === 'readIcon') icon.innerHTML = '&#x21bb;';
+                if (iconId === 'deleteIcon') icon.innerHTML = '&#x2715;';
+            }
+        }
+
+        async function writeDocument() {
+            const token = getToken();
+            if (!token) return;
+
+            const jsonInput = document.getElementById('jsonInput').value.trim();
+            if (!jsonInput) {
+                showStatus('writeStatus', 'Please enter a JSON document', 'error');
+                return;
+            }
+
+            let jsonData;
+            try {
+                jsonData = JSON.parse(jsonInput);
+            } catch (e) {
+                showStatus('writeStatus', 'Invalid JSON: ' + e.message, 'error');
+                return;
+            }
+
+            setLoading('writeIcon', true);
+            hideStatus('writeStatus');
+
+            try {
+                const response = await fetch('/write', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(jsonData)
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showStatus('writeStatus', `Document created with key: ${data.document_key}`, 'success');
+                    document.getElementById('jsonInput').value = '';
+                    // Auto-refresh documents
+                    readDocuments();
+                } else {
+                    showStatus('writeStatus', data.detail || 'Failed to write document', 'error');
+                }
+            } catch (e) {
+                showStatus('writeStatus', 'Network error: ' + e.message, 'error');
+            } finally {
+                setLoading('writeIcon', false);
+            }
+        }
+
+        async function readDocuments() {
+            const token = getToken();
+            if (!token) return;
+
+            setLoading('readIcon', true);
+            hideStatus('readStatus');
+
+            try {
+                const response = await fetch('/read', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    displayDocuments(data.documents || []);
+                    showStatus('readStatus', data.message, 'success');
+                } else {
+                    showStatus('readStatus', data.detail || 'Failed to read documents', 'error');
+                    document.getElementById('documentsContainer').innerHTML =
+                        '<div class="no-documents">Failed to load documents</div>';
+                }
+            } catch (e) {
+                showStatus('readStatus', 'Network error: ' + e.message, 'error');
+            } finally {
+                setLoading('readIcon', false);
+            }
+        }
+
+        function displayDocuments(documents) {
+            const container = document.getElementById('documentsContainer');
+
+            if (!documents || documents.length === 0) {
+                container.innerHTML = '<div class="no-documents">No documents found</div>';
+                return;
+            }
+
+            container.innerHTML = documents.map(doc => {
+                const key = doc._key || 'unknown';
+                const displayDoc = { ...doc };
+                delete displayDoc._id;
+                delete displayDoc._rev;
+
+                return `
+                    <div class="document">
+                        <div class="document-key">Key: ${key}</div>
+                        <div class="document-content">${JSON.stringify(displayDoc, null, 2)}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function deleteDatabase() {
+            const token = getToken();
+            if (!token) return;
+
+            if (!confirm('Are you sure you want to delete the entire database? This action cannot be undone.')) {
+                return;
+            }
+
+            setLoading('deleteIcon', true);
+            hideStatus('readStatus');
+
+            try {
+                const response = await fetch('/delete', {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showStatus('readStatus', 'Database deleted successfully', 'success');
+                    document.getElementById('documentsContainer').innerHTML =
+                        '<div class="no-documents">Database deleted</div>';
+                } else {
+                    showStatus('readStatus', data.detail || 'Failed to delete database', 'error');
+                }
+            } catch (e) {
+                showStatus('readStatus', 'Network error: ' + e.message, 'error');
+            } finally {
+                setLoading('deleteIcon', false);
+            }
+        }
+
+        // Allow Ctrl+Enter to submit in textarea
+        document.getElementById('jsonInput').addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'Enter') {
+                writeDocument();
+            }
+        });
+    </script>
+</body>
+</html>
