@@ -5,7 +5,14 @@ cd /project
 # Try to download project zip, if the `projectURL` file is there:
 if test -e projectURL ; then
   echo Downloading project.tar.gz ...
-  curl -O project.tar.gz $(cat projectURL)
+  # Note: uses -o (lowercase) to specify output filename; -O (uppercase) would ignore the filename
+  curl -o project.tar.gz "$(cat projectURL)"
+fi
+
+# Try to download project archive from ARCHIVE_FILE env variable:
+if [ -n "$ARCHIVE_FILE" ] ; then
+  echo "Downloading project.tar.gz from $ARCHIVE_FILE ..."
+  curl -o project.tar.gz "$ARCHIVE_FILE"
 fi
 
 # Try to unzip the project zip, if the `project.tar.gz` file is there:
