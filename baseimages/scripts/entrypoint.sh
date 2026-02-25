@@ -10,9 +10,13 @@ if test -e projectURL ; then
 fi
 
 # Try to download project archive from ARCHIVE_FILE env variable:
+echo "ARCHIVE_FILE=${ARCHIVE_FILE:-<not set>}"
 if [ -n "$ARCHIVE_FILE" ] ; then
   echo "Downloading project.tar.gz from $ARCHIVE_FILE ..."
   curl -o project.tar.gz "$ARCHIVE_FILE"
+  echo "curl exit code: $?"
+  echo "Downloaded file info:"
+  ls -lh project.tar.gz 2>/dev/null || echo "project.tar.gz not found after download"
 fi
 
 # Try to unzip the project zip, if the `project.tar.gz` file is there:
