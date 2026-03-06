@@ -1,13 +1,7 @@
-FROM ubuntu:24.04
-
-COPY ./scripts /scripts
-RUN /scripts/debinstall.sh
-
-WORKDIR /home/user
-USER user
+FROM arangodb/py13base
 
 RUN /scripts/prepareuv.sh 3.13 --extra-index-url https://pypi.nvidia.com/ \
    python-arango phenolrs networkx \
-   cugraph-cu12 
+   cugraph-cu12
 
 CMD [ "/scripts/entrypoint.sh" ]
