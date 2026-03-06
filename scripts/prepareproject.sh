@@ -9,7 +9,7 @@ set -e
 export UV_HTTP_TIMEOUT=3600
 . /home/user/.local/bin/env
 . /home/user/the_venv/bin/activate
-uv pip install -r pyproject.toml
+uv pip install -c /home/user/constraints.txt -r pyproject.toml
 
 # First find all files which have changed, if any has changed, we abort:
 cd /home/user
