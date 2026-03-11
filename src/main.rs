@@ -433,7 +433,16 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
 
         let dest_path = dst.join(&file_name);
 
-        if path.is_dir() {
+        if path.is_symlink() {
+            let target = fs::read_link(&path)?;
+            if target.is_absolute() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("absolute symlink not supported: {}", path.display()),
+                ));
+            }
+            std::os::unix::fs::symlink(&target, &dest_path)?;
+        } else if path.is_dir() {
             copy_dir_recursive(&path, &dest_path)?;
         } else {
             fs::copy(&path, &dest_path)?;
