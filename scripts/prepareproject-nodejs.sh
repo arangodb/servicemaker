@@ -5,8 +5,7 @@
 
 set -e
 
-# We're in /project/{service-name} (WORKDIR)
-# services.json is in the current directory
+# We're in /project/{project-name} (WORKDIR)
 # package.json is in the current directory
 # node_modules will be created in the current directory
 PROJECT_DIR=$(pwd)
@@ -18,13 +17,6 @@ if [ ! -d "/home/user/node_modules" ]; then
 fi
 
 echo "Base node_modules found at /home/user/node_modules (immutable)"
-
-# Verify base node-foxx binary exists
-if [ -f "/home/user/node_modules/.bin/node-foxx" ]; then
-    echo "✓ Base node-foxx binary available"
-else
-    echo "WARNING: node-foxx binary not found in base node_modules"
-fi
 
 # Install project dependencies if package.json exists
 if [ -f "package.json" ]; then
@@ -79,19 +71,8 @@ if [ -f "package.json" ]; then
         # Create empty node_modules directory if it doesn't exist (for consistency)
         mkdir -p node_modules
     fi
-    
-    # Verify node-foxx is accessible (either from base or project node_modules)
-    if [ -f "node_modules/.bin/node-foxx" ]; then
-        echo "✓ node-foxx binary found in project node_modules"
-    elif [ -f "/home/user/node_modules/.bin/node-foxx" ]; then
-        echo "✓ node-foxx binary available from base node_modules (will be resolved via NODE_PATH)"
-    else
-        echo "ERROR: node-foxx binary not found in base or project node_modules!"
-        exit 1
-    fi
 else
     echo "No package.json found, skipping dependency installation"
 fi
 
 echo "Node.js project prepared successfully"
-

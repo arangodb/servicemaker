@@ -41,6 +41,14 @@ const CHART_FILES: &[ChartFile] = &[
         path: "templates/service.yaml",
         content: include_str!("../charts/templates/service.yaml"),
     },
+    ChartFile {
+        path: "templates/service-account.yaml",
+        content: include_str!("../charts/templates/service-account.yaml"),
+    },
+    ChartFile {
+        path: "templates/token-permissions.yaml",
+        content: include_str!("../charts/templates/token-permissions.yaml"),
+    },
 ];
 
 // Embedded script files
@@ -57,10 +65,6 @@ const SCRIPT_FILES: &[ScriptFile] = &[
     ScriptFile {
         path: "prepareproject-nodejs.sh",
         content: include_str!("../scripts/prepareproject-nodejs.sh"),
-    },
-    ScriptFile {
-        path: "prepareproject-express.sh",
-        content: include_str!("../scripts/prepareproject-express.sh"),
     },
     ScriptFile {
         path: "check-base-dependencies.js",
@@ -100,7 +104,9 @@ struct Args {
     #[arg(long, default_value = "false")]
     push: bool,
 
-    /// Name of the Python script to run (relative to project home)
+    /// Name of the entrypoint script to run (relative to project home)
+    /// For Python: e.g., main.py
+    /// For Node.js: e.g., index.js
     #[arg(long)]
     entrypoint: Option<String>,
 
@@ -127,13 +133,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err(format!("Project home does not exist: {}", project_home.display()).into());
     }
 
-    // Detect project type
+    // Detect project type: "python" or "nodejs"
     let project_type = detect_project_type(project_home)?;
     println!("Detected project type: {}", project_type);
 
     // Handle project type-specific configuration
     match project_type.as_str() {
         "python" => {
+            // Python project: requires pyproject.toml
             // Try to get name from pyproject.toml if not provided on command line
             if args.name.is_none()
                 && let Ok(name) = read_name_from_pyproject(project_home)
@@ -158,8 +165,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 args.base_image = Some(DEFAULT_PYTHON_BASE_IMAGE.to_string());
             }
         }
-        "express" => {
-            // Express application - standalone, no services.json or manifest.json
+        "nodejs" => {
+            // Node.js project: requires package.json (no services.json or manifest.json)
             // Try to get name from package.json if not provided
             if args.name.is_none()
                 && let Ok(name) = read_name_from_package_json(project_home)
@@ -169,42 +176,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Try to auto-detect entrypoint from package.json "main" field or "start" script
             if args.entrypoint.is_none() {
-                if let Ok(Some(entrypoint)) = detect_express_entrypoint(project_home) {
+                if let Ok(Some(entrypoint)) = detect_nodejs_entrypoint(project_home) {
                     args.entrypoint = Some(entrypoint);
                 } else {
                     args.entrypoint = Some("index.js".to_string());
-                }
-            }
-
-            // Set default base image for Node.js if not explicitly set
-            if !base_image_explicitly_set {
-                args.base_image = Some(DEFAULT_NODEJS_BASE_IMAGE.to_string());
-            }
-        }
-        "foxx" => {
-            // Multi-service structure (has services.json)
-            // Try to get name from package.json if not provided
-            if args.name.is_none()
-                && let Ok(name) = read_name_from_package_json(project_home)
-            {
-                args.name = Some(name);
-            }
-
-            // Set default base image for Node.js if not explicitly set
-            if !base_image_explicitly_set {
-                args.base_image = Some(DEFAULT_NODEJS_BASE_IMAGE.to_string());
-            }
-        }
-        "foxx-service" => {
-            // Single service directory - will generate services.json
-            let service_name = project_home.file_name().unwrap().to_str().unwrap();
-
-            // Try to get name from package.json if not provided
-            if args.name.is_none() {
-                if let Ok(name) = read_name_from_package_json(project_home) {
-                    args.name = Some(name);
-                } else {
-                    args.name = Some(service_name.to_string());
                 }
             }
 
@@ -268,48 +243,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Copy scripts to temp directory with executable permissions
     copy_scripts_to_temp(&temp_dir)?;
 
-    // Handle Express and Foxx service directories
-    let (service_name_opt, project_dir) = if project_type == "express" {
-        // Express app - copy directly, no services.json needed
-        let project_dest = temp_dir.join(initial_project_dir);
-        println!(
-            "Copying Express app from {} to {}",
-            project_home.display(),
-            project_dest.display()
-        );
-        copy_dir_recursive(project_home, &project_dest)?;
-        (None, initial_project_dir.to_string())
-    } else if project_type == "foxx-service" {
-        let service_name = initial_project_dir;
-
-        // Copy service directory directly (no wrapper folder)
-        let project_dest = temp_dir.join(service_name);
-        println!(
-            "Copying service from {} to {}",
-            project_home.display(),
-            project_dest.display()
-        );
-        copy_dir_recursive(project_home, &project_dest)?;
-
-        // Generate services.json with mount path "/" directly in service directory
-        let services_json_content = generate_services_json(service_name);
-        let services_json_path = project_dest.join("services.json");
-        fs::write(&services_json_path, services_json_content)?;
-        println!("Generated services.json: {}", services_json_path.display());
-
-        // Store service_name for later use in Dockerfile generation
-        (Some(service_name.to_string()), service_name.to_string())
-    } else {
-        // Normal case - copy project directory as-is
-        let project_dest = temp_dir.join(initial_project_dir);
-        println!(
-            "Copying project from {} to {}",
-            project_home.display(),
-            project_dest.display()
-        );
-        copy_dir_recursive(project_home, &project_dest)?;
-        (None, initial_project_dir.to_string())
-    };
+    // Copy project directory to temp directory
+    // Both Python and Node.js projects are copied directly without any special handling
+    let project_dest = temp_dir.join(initial_project_dir);
+    println!(
+        "Copying project from {} to {}",
+        project_home.display(),
+        project_dest.display()
+    );
+    copy_dir_recursive(project_home, &project_dest)?;
+    let project_dir = initial_project_dir.to_string();
 
     // Read environment variables from .env.example if it exists
     let env_vars = read_env_example(project_home)?;
@@ -320,6 +263,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Choose Dockerfile template and modify based on project type
     let modified_dockerfile = match project_type.as_str() {
         "python" => {
+            // Python project: use Python Dockerfile template
             let python_version = extract_python_version(base_image);
             let entrypoint = args.entrypoint.as_ref().unwrap();
             let dockerfile_template = include_str!("../Dockerfile.template");
@@ -333,26 +277,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &env_vars,
             )
         }
-        "express" => {
+        "nodejs" => {
+            // Node.js project: use Node.js Dockerfile template
             let entrypoint = args.entrypoint.as_ref().unwrap();
-            let dockerfile_template = include_str!("../Dockerfile.express.template");
-            modify_dockerfile_express(
-                dockerfile_template,
-                base_image,
-                &project_dir,
-                entrypoint,
-                port,
-                &env_vars,
-            )
-        }
-        "foxx" | "foxx-service" => {
             let dockerfile_template = include_str!("../Dockerfile.nodejs.template");
             modify_dockerfile_nodejs(
                 dockerfile_template,
                 base_image,
                 &project_dir,
+                entrypoint,
                 port,
-                service_name_opt.as_deref(),
                 &env_vars,
             )
         }
@@ -485,12 +419,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n=== Generating Helm Chart ===");
     let (service_name, version) = match project_type.as_str() {
         "python" => {
+            // Extract service name and version from pyproject.toml
             let (name, ver) = read_service_info_from_pyproject(project_home)?;
             println!("Service name from pyproject.toml: {}", name);
             println!("Version from pyproject.toml: {}", ver);
             (name, ver)
         }
-        "express" | "foxx" | "foxx-service" => {
+        "nodejs" => {
+            // Extract service name and version from package.json
             let (name, ver) = read_service_info_from_package_json(project_home)?;
             println!("Service name from package.json: {}", name);
             println!("Version from package.json: {}", ver);
@@ -556,7 +492,6 @@ fn prompt(message: &str) -> Result<String, io::Error> {
 }
 
 fn extract_python_version(base_image: &str) -> String {
-    // Extract Python version from base image name (e.g., "py13base" -> "3.13", "py12base" -> "3.12")
     if let Some(py_pos) = base_image.find("py") {
         let after_py = &base_image[py_pos + 2..];
         if let Some(end_pos) = after_py.find(|c: char| !c.is_ascii_digit()) {
@@ -609,7 +544,9 @@ fn modify_dockerfile_python(
     result
 }
 
-fn modify_dockerfile_express(
+/// Modify Node.js Dockerfile template with project-specific values
+/// Sets up NODE_PATH to resolve from project node_modules first, then base node_modules
+fn modify_dockerfile_nodejs(
     template: &str,
     base_image: &str,
     project_dir: &str,
@@ -617,10 +554,11 @@ fn modify_dockerfile_express(
     port: u16,
     env_vars: &[(String, String)],
 ) -> String {
-    // Express app structure:
+    // Node.js app structure:
     // - COPY copies the project directory directly
     // - WORKDIR is /project/{project-dir}
     // - node_modules is in /project/{project-dir}/node_modules
+    // - NODE_PATH allows resolving from project node_modules first, then base node_modules
     let node_path = format!("/project/{}/node_modules:/home/user/node_modules", project_dir);
     
     let mut result = template
@@ -650,46 +588,8 @@ fn modify_dockerfile_express(
     result
 }
 
-fn modify_dockerfile_nodejs(
-    template: &str,
-    base_image: &str,
-    project_dir: &str,
-    port: u16,
-    _service_name: Option<&str>,
-    env_vars: &[(String, String)],
-) -> String {
-    // Simplified structure:
-    // - COPY copies the service directory directly (services.json is inside)
-    // - WORKDIR is /project/{service-name} (where services.json is located)
-    // - node_modules is in /project/{service-name}/node_modules
-    let node_path = format!("/project/{}/node_modules:/home/user/node_modules", project_dir);
-    
-    let mut result = template
-        .replace("{BASE_IMAGE}", base_image)
-        .replace("{PROJECT_DIR}", project_dir)
-        .replace("{WORKDIR}", project_dir)
-        .replace("{PORT}", &port.to_string())
-        .replace("{NODE_PATH}", &node_path);
-    
-    // Add environment variables if any
-    if !env_vars.is_empty() {
-        let env_lines: Vec<String> = env_vars
-            .iter()
-            .map(|(key, value)| format!("ENV {}={}", key, value))
-            .collect();
-        let env_block = format!("\n{}", env_lines.join("\n"));
-        
-        // Insert after NODE_PATH ENV line
-        if let Some(pos) = result.find("ENV NODE_PATH")
-            && let Some(newline_pos) = result[pos..].find('\n') {
-            let insert_pos = pos + newline_pos + 1;
-            result.insert_str(insert_pos, &env_block);
-        }
-    }
-    
-    result
-}
-
+/// Read environment variables from .env.example file
+/// Parses KEY=VALUE format and handles quoted values
 fn read_env_example(project_home: &Path) -> Result<Vec<(String, String)>, Box<dyn std::error::Error>> {
     let env_example_path = project_home.join(".env.example");
     
@@ -735,7 +635,9 @@ fn read_env_example(project_home: &Path) -> Result<Vec<(String, String)>, Box<dy
     Ok(env_vars)
 }
 
-fn detect_express_entrypoint(project_home: &Path) -> Result<Option<String>, Box<dyn std::error::Error>> {
+/// Detect Node.js entrypoint from package.json
+/// Checks "main" field first, then "start" script
+fn detect_nodejs_entrypoint(project_home: &Path) -> Result<Option<String>, Box<dyn std::error::Error>> {
     let package_json_path = project_home.join("package.json");
     
     if !package_json_path.exists() {
@@ -762,6 +664,9 @@ fn detect_express_entrypoint(project_home: &Path) -> Result<Option<String>, Box<
     Ok(None)
 }
 
+/// Detect project type: "python" or "nodejs"
+/// Python: has pyproject.toml
+/// Node.js: has package.json (and no services.json or manifest.json)
 fn detect_project_type(project_home: &Path) -> Result<String, Box<dyn std::error::Error>> {
     let pyproject = project_home.join("pyproject.toml");
     let package_json = project_home.join("package.json");
@@ -769,22 +674,20 @@ fn detect_project_type(project_home: &Path) -> Result<String, Box<dyn std::error
     let manifest_json = project_home.join("manifest.json");
 
     if pyproject.exists() {
+        // Python project detected
         Ok("python".to_string())
     } else if package_json.exists() {
-        // Check if it's an Express app (has express dependency, no services.json, no manifest.json)
-        if !services_json.exists() && !manifest_json.exists()
-            && let Ok(is_express) = is_express_app(project_home)
-            && is_express {
-            return Ok("express".to_string());
+        // Node.js project: must not have services.json or manifest.json (those are not supported)
+        if services_json.exists() || manifest_json.exists() {
+            return Err(format!(
+                "Node.js projects with services.json or manifest.json are not supported. \
+                This service only supports Python projects and simple Node.js projects with package.json only. \
+                Found in: {}",
+                project_home.display()
+            ).into());
         }
-        
-        // Check for Foxx services
-        if services_json.exists() {
-            Ok("foxx".to_string())
-        } else {
-            // Single service directory - needs wrapper structure
-            Ok("foxx-service".to_string())
-        }
+        // Simple Node.js project
+        Ok("nodejs".to_string())
     } else {
         Err(format!(
             "Could not detect project type. Expected pyproject.toml (Python) or package.json (Node.js) in: {}",
@@ -792,40 +695,6 @@ fn detect_project_type(project_home: &Path) -> Result<String, Box<dyn std::error
         )
         .into())
     }
-}
-
-fn is_express_app(project_home: &Path) -> Result<bool, Box<dyn std::error::Error>> {
-    let package_json_path = project_home.join("package.json");
-    
-    if !package_json_path.exists() {
-        return Ok(false);
-    }
-    
-    let content = fs::read_to_string(&package_json_path)?;
-    let value: serde_json::Value = serde_json::from_str(&content)?;
-    
-    // Check if express is in dependencies or devDependencies
-    let has_express = value
-        .get("dependencies")
-        .and_then(|deps| deps.get("express"))
-        .is_some()
-        || value
-            .get("devDependencies")
-            .and_then(|deps| deps.get("express"))
-            .is_some();
-    
-    Ok(has_express)
-}
-
-fn generate_services_json(_service_name: &str) -> String {
-    // basePath is "." because services.json is in the same directory as the service
-    // and node-foxx runs from that directory (WORKDIR)
-    r#"[
-    {
-        "mount": "/",
-        "basePath": "."
-    }
-]"#.to_string()
 }
 
 fn read_name_from_package_json(project_home: &Path) -> Result<String, Box<dyn std::error::Error>> {

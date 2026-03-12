@@ -10,9 +10,7 @@ ServiceMaker takes a project directory and:
 
 1. **Detects Project Type**: Automatically identifies the project type:
    - **Python**: Projects with `pyproject.toml`
-   - **Express.js**: Node.js applications with `express` dependency (no Foxx configuration)
-   - **Foxx Services**: Node.js services using `@arangodb/node-foxx` framework
-   - **Foxx-Service**: Single Foxx service (auto-generates `services.json`)
+   - **Node.js/Express**: Node.js applications with `package.json` (no `services.json` or `manifest.json`)
 
 2. **Reads Project Metadata**: Extracts information from:
    - `package.json` (Node.js projects)
@@ -41,9 +39,7 @@ ServiceMaker takes a project directory and:
 | Type | Detection | Base Image | Entrypoint |
 |------|-----------|------------|------------|
 | **Python** | `pyproject.toml` | `arangodb/py13base:latest` | Python script |
-| **Express** | `express` in dependencies, no `services.json` | `arangodb/node22base:latest` | `node {entrypoint}` |
-| **Foxx** | `package.json` + `services.json` | `arangodb/node22base:latest` | `node-foxx` |
-| **Foxx-Service** | `package.json` only | `arangodb/node22base:latest` | `node-foxx` |
+| **Node.js/Express** | `package.json` (no `services.json` or `manifest.json`) | `arangodb/node22base:latest` | `node {entrypoint}` |
 
 ### Base Image Strategy
 

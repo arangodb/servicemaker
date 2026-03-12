@@ -1,7 +1,10 @@
+# Dockerfile template for Node.js/Express projects
+# This template is used for Node.js projects with package.json (no services.json or manifest.json)
 FROM {BASE_IMAGE}
 
 USER root
 
+# Copy scripts and project files
 COPY ./scripts /scripts
 COPY {PROJECT_DIR} /project/{PROJECT_DIR}
 RUN chown -R user:user /project/{PROJECT_DIR}
@@ -14,11 +17,10 @@ WORKDIR /project/{WORKDIR}
 # while still accessing base packages from /home/user/node_modules
 ENV NODE_PATH={NODE_PATH}
 
+# Install project dependencies (only missing/incompatible ones)
 RUN /scripts/prepareproject-nodejs.sh
 
 EXPOSE {PORT}
 
-# Run node-foxx from current directory (wrapper or project root)
-# Use base node-foxx binary (guaranteed to exist), NODE_PATH handles module resolution
-CMD ["/home/user/node_modules/.bin/node-foxx"]
-
+# Run Node.js application directly using node
+CMD ["node", "{ENTRYPOINT}"]

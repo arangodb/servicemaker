@@ -16,13 +16,6 @@ const options = {
             },
         ],
         components: {
-            securitySchemes: {
-                bearerAuth: {
-                    type: 'http',
-                    scheme: 'bearer',
-                    bearerFormat: 'JWT',
-                },
-            },
             schemas: {
                 Item: {
                     type: 'object',
@@ -44,7 +37,6 @@ const options = {
                 },
             },
         },
-        security: [{ bearerAuth: [] }],
     },
     apis: ['./index.js'],
 };

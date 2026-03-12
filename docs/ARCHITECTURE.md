@@ -2,20 +2,22 @@
 
 This document describes the technical architecture and design decisions for ServiceMaker.
 
-## Node.js/Foxx Services
+## Supported Project Types
+
+ServiceMaker supports two project types:
+- **Python**: Projects with `pyproject.toml`
+- **Node.js/Express**: Projects with `package.json` (no `services.json` or `manifest.json`)
+
+## Node.js/Express Services
 
 ### Base Image Structure
 
-The base image (`arangodb/node22base:latest`) provides an immutable foundation for all Node.js/Foxx services:
+The base image (`arangodb/node22base:latest`) provides an immutable foundation for all Node.js/Express services:
 
 **File System Layout:**
 ```
 /home/user/
 ├── node_modules/          # Immutable base packages (pre-scanned for security)
-│   ├── @arangodb/
-│   │   ├── node-foxx@^0.0.1-alpha.0
-│   │   ├── node-foxx-launcher@^0.0.1-alpha.0
-│   │   └── arangodb@^0.0.1-alpha.0
 │   ├── lodash@^4.17.21
 │   ├── dayjs@^1.11.10
 │   ├── axios@^1.7.2
@@ -34,24 +36,17 @@ The base image (`arangodb/node22base:latest`) provides an immutable foundation f
 
 ### Service Structure
 
-Each service is deployed with the following structure:
+Each Node.js/Express service is deployed with the following structure:
 
 ```
-/project/{service-name}/
-├── services.json          # Auto-generated Foxx service configuration
-│                         # Format: [{"mount": "/", "basePath": "."}]
+/project/{project-name}/
 ├── package.json          # Project dependencies and metadata
 ├── node_modules/         # Project-specific packages ONLY
 │                         # Contains only packages that are:
 │                         # - Missing from base node_modules
 │                         # - Have incompatible versions with base
-└── ...                   # Service code files (manifest.json, routes, etc.)
+└── ...                   # Service code files (index.js, routes, etc.)
 ```
-
-**Build-Time Generation:**
-- `services.json` is auto-generated for `foxx-service` project types
-- Mount path is hardcoded to `"/"` (routing handled by Helm chart at deployment)
-- `basePath` is set to `"."` (relative to WORKDIR where `node-foxx` runs)
 
 ### Dependency Resolution Algorithm
 
@@ -95,7 +90,7 @@ Node.js module resolution uses `NODE_PATH` environment variable:
 
 **Configuration:**
 ```dockerfile
-ENV NODE_PATH=/project/{service-name}/node_modules:/home/user/node_modules
+ENV NODE_PATH=/project/{project-name}/node_modules:/home/user/node_modules
 ```
 
 **Resolution Order:**
@@ -117,14 +112,14 @@ ENV NODE_PATH=/project/{service-name}/node_modules:/home/user/node_modules
 
 1. **Base Image**: `FROM arangodb/node22base:latest`
 2. **Copy Scripts**: Embed `prepareproject-nodejs.sh` and `check-base-dependencies.js`
-3. **Copy Project**: Copy service directory to `/project/{service-name}/`
+3. **Copy Project**: Copy project directory to `/project/{project-name}/`
    - Local `node_modules` are excluded (not copied)
-4. **Set Working Directory**: `WORKDIR /project/{service-name}`
+4. **Set Working Directory**: `WORKDIR /project/{project-name}`
 5. **Configure NODE_PATH**: Set environment variable for module resolution
 6. **Run Preparation Script**: Execute `prepareproject-nodejs.sh`
    - Analyzes dependencies
    - Installs only missing/incompatible packages
-7. **Set Entrypoint**: `CMD ["/home/user/node_modules/.bin/node-foxx"]`
+7. **Set Entrypoint**: `CMD ["node", "{ENTRYPOINT}"]`
 
 **Script Execution Flow:**
 
@@ -137,21 +132,17 @@ prepareproject-nodejs.sh
 │   ├── Verify version compatibility (semver)
 │   └── Output JSON: packages to install
 ├── Parse JSON output
-├── Install missing/incompatible packages
-└── Verify node-foxx binary accessibility
+└── Install missing/incompatible packages
 ```
 
 ### Runtime Execution
 
 **Container Startup:**
 
-1. **Entrypoint**: `/home/user/node_modules/.bin/node-foxx` (from base image)
-2. **Working Directory**: `/project/{service-name}/` (where `services.json` is located)
-3. **Service Discovery**: `node-foxx` reads `services.json` to determine:
-   - Mount path: `"/"`
-   - Base path: `"."` (current directory)
-4. **Module Resolution**: Uses `NODE_PATH` to resolve dependencies from both locations
-5. **Service Launch**: Foxx service starts with access to both base and project packages
+1. **Entrypoint**: `node {ENTRYPOINT}` (e.g., `node index.js`)
+2. **Working Directory**: `/project/{project-name}/` (where `package.json` is located)
+3. **Module Resolution**: Uses `NODE_PATH` to resolve dependencies from both locations
+4. **Service Launch**: Node.js/Express application starts with access to both base and project packages
 
 ### Security Considerations
 
@@ -204,3 +195,66 @@ prepareproject-nodejs.sh
 - Project `node_modules` must be writable (for installation)
 - Both locations must be accessible via NODE_PATH
 
+## Python Services
+
+### Base Image Structure
+
+The base image (e.g., `arangodb/py13base:latest`) provides an immutable foundation for all Python services:
+
+**File System Layout:**
+```
+/home/user/
+├── the_venv/              # Python virtual environment
+│   └── lib/python3.13/site-packages/
+│       ├── python_arango/
+│       ├── phenolrs/
+│       ├── networkx/
+│       └── ... (other pre-installed packages)
+└── sums_sha256            # SHA256 checksums of all base packages
+```
+
+**Key Properties:**
+- **Immutability**: Base virtual environment is never modified after image creation
+- **Pre-scanning**: Base packages are security-scanned before deployment
+- **Checksum Tracking**: `sums_sha256` file enables change detection and verification
+
+### Service Structure
+
+Each Python service is deployed with the following structure:
+
+```
+/project/{project-name}/
+├── pyproject.toml         # Project dependencies and metadata
+├── the_venv/             # Virtual environment changes ONLY
+│                         # Contains only packages that are:
+│                         # - Missing from base virtual environment
+│                         # - Have incompatible versions with base
+└── ...                   # Service code files (main.py, etc.)
+```
+
+### Dependency Resolution
+
+Python services use `uv` package manager:
+- `uv sync --active` installs only missing/incompatible dependencies
+- Base virtual environment is reused and extended
+- Only new packages are added to the virtual environment
+
+### Build Process Flow
+
+**Dockerfile Build Steps:**
+
+1. **Base Image**: `FROM arangodb/py13base:latest`
+2. **Copy Project**: Copy project directory to `/home/user/project/{project-name}/`
+3. **Set Working Directory**: `WORKDIR /home/user/project/{project-name}`
+4. **Activate Virtual Environment**: Source the base virtual environment
+5. **Install Dependencies**: Run `uv sync --active` to install only new dependencies
+6. **Set Entrypoint**: `CMD ["python", "{ENTRYPOINT}"]`
+
+### Runtime Execution
+
+**Container Startup:**
+
+1. **Entrypoint**: `python {ENTRYPOINT}` (e.g., `python main.py`)
+2. **Working Directory**: `/home/user/project/{project-name}/`
+3. **Virtual Environment**: Base virtual environment is activated
+4. **Service Launch**: Python application starts with access to both base and project packages

@@ -32,7 +32,10 @@ spec:
         type: deployment
         profiles.arangodb.com/deployment: deployment
         integration.profiles.arangodb.com/authn: v1
+        integration.profiles.arangodb.com/authz: v1
+        permissions.arangodb.com/token: {{ template "template.releaseName" . }}-token
     spec:
+      serviceAccountName: {{ template "template.releaseName" . }}
       containers:
         - name: {SERVICE_NAME}
           image: {IMAGE_NAME}

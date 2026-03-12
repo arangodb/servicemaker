@@ -30,25 +30,13 @@ if test -e entrypoint ; then
   ENTRYPOINT=$(cat entrypoint)
   echo Running project ...
   
-  # Check if it's a Node.js/Foxx service (requires both package.json and services.json)
-  if [ -f "package.json" ] && [ -f "services.json" ]; then
-    # Node.js/Foxx service
-    echo "Detected Node.js/Foxx service"
-    if [ -f "node_modules/.bin/node-foxx" ]; then
-      exec node_modules/.bin/node-foxx
-    elif [ -f "/home/user/node_modules/.bin/node-foxx" ]; then
-      # Fallback to base node-foxx binary
-      exec /home/user/node_modules/.bin/node-foxx
-    else
-      echo "Error: node-foxx not found. Make sure node_modules are installed."
-      exit 1
-    fi
-  elif [ -f "package.json" ] && [ ! -f "services.json" ] && [ ! -f "manifest.json" ] && grep -q '"express"' package.json 2>/dev/null; then
-    # Express.js application
-    echo "Detected Express.js application"
+  # Check if it's a Node.js application (package.json exists, no services.json or manifest.json)
+  if [ -f "package.json" ]; then
+    # Node.js application
+    echo "Detected Node.js application"
     exec node $ENTRYPOINT
   else
-    # Python service (existing logic)
+    # Python service (has pyproject.toml or no package.json)
     echo "Detected Python service"
     . /home/user/.local/bin/env
     . /home/user/the_venv/bin/activate

@@ -16,11 +16,7 @@ USER user
 # Standard packages are selected to benefit most projects while keeping image size reasonable
 RUN npm init -y && \
     npm install \
-    # ArangoDB/Foxx core
-    @arangodb/node-foxx@^0.0.1-alpha.0 \
-    @arangodb/node-foxx-launcher@^0.0.1-alpha.0 \
-    @arangodb/arangodb@^0.0.1-alpha.0 \
-    arangojs@^10.1.2 \
+    arangojs@^10.2.2 \
     # Dependency checking utility
     semver@^7.6.3 \
     # Essential utilities
