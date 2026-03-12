@@ -1,10 +1,4 @@
-FROM debian:trixie-slim
-
-COPY ./scripts /scripts
-RUN /scripts/debinstall.sh
-
-WORKDIR /home/user
-USER user
+FROM arangodb/py13base
 
 RUN /scripts/prepareuv.sh 3.13 python-arango phenolrs \
     torch torch-geometric torchaudio torchvideo
