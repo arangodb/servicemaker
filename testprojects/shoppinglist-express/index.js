@@ -150,7 +150,7 @@ app.get('/api/databases', async (req, res, next) => {
         });
         systemDbConn.useBearerAuth(token);
 
-        const databases = await systemDb.listDatabases();
+        const databases = await systemDbConn.listDatabases();
         res.json({ databases });
     } catch (err) {
         console.error('Error listing databases:', err.message);

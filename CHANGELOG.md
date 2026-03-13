@@ -9,153 +9,125 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-#### Express Application Support
-- **Express Project Detection**: Added automatic detection of Express.js applications
-  - Detects Express apps by checking for `express` dependency in `package.json`
-  - Requires absence of `services.json` and `manifest.json` (distinguishes from Foxx services)
-  - Project type: `express`
-  
-- **Express Dockerfile Template**: Created `Dockerfile.express.template` for Express applications
-  - Uses Node.js 22 base image (`arangodb/node22base:latest`)
-  - Runs Express apps directly with `node {ENTRYPOINT}` instead of `node-foxx`
-  - No `services.json` or `manifest.json` required
-  - Entrypoint auto-detected from `package.json` `main` field or `start` script
-  - Defaults to `index.js` if not found
+#### Node.js Project Support
 
-- **Express Preparation Script**: Added `scripts/prepareproject-express.sh`
-  - Similar to Node.js preparation but without `node-foxx` checks
-  - Installs only missing/incompatible dependencies
-  - Uses base `node_modules` from base image via NODE_PATH
-
-- **Environment Variables from `.env.example`**: Added support for reading environment variables
-  - Automatically reads `.env.example` file if present in project root
-  - Parses `KEY=VALUE` format with support for quoted values
-  - Injects environment variables as `ENV` directives in Dockerfile
-  - Supports comments (lines starting with `#`) and empty lines
-  - Handles values with spaces or special characters (auto-quotes for Docker)
-  - Works for all project types (Python, Foxx, Express)
-
-#### Node.js/Foxx Service Support
-- **Node.js Base Image**: Added `Dockerfile.node22base` for Node.js 22 base image with pre-installed packages
+- **Node.js Base Image**: Added `baseimages/Dockerfile.node22base` for creating Node.js 22 base images
+  - Base image `arangodb/node22base:latest` provides immutable foundation for all Node.js services
   - Installs Node.js 22 from NodeSource
-  - Pre-installs ArangoDB packages: `@arangodb/node-foxx`, `@arangodb/node-foxx-launcher`, `@arangodb/arangodb`
-  - Pre-installs standard packages with version pinning: `lodash`, `dayjs`, `uuid`, `dotenv`, `axios`, `joi`, `winston`, `async`, `jsonwebtoken`, `bcrypt`, `semver`
-  - Creates base `node_modules` at `/home/user/node_modules` with checksums for dependency tracking
+  - Pre-installs common packages with version pinning: `arangojs@^10.2.2`, `semver@^7.6.3`, `lodash@^4.17.21`, `dayjs@^1.11.10`, `uuid@^9.0.1`, `dotenv@^16.4.5`, `axios@^1.7.2`, `joi@^17.13.3`, `winston@^3.15.0`, `async@^3.2.5`, `jsonwebtoken@^9.0.2`, `bcrypt@^5.1.1`
+  - Creates base `node_modules` at `/home/user/node_modules` with SHA256 checksums for dependency tracking
   - Base image is immutable and pre-scanned for security vulnerabilities
   - Added to `baseimages/imagelist.txt` as `node22base`
 
-- **Node.js Dockerfile Template**: Created `Dockerfile.nodejs.template` for building Node.js/Foxx service images
-  - Copies service directory directly to `/project/{service-name}/`
+- **Node.js Dockerfile Template**: Created `Dockerfile.nodejs.template` for building Node.js service images
+  - Uses Node.js 22 base image (`arangodb/node22base:latest`)
+  - Copies project directory directly to `/project/{project-name}/`
   - Configures working directory and user permissions
-  - Sets NODE_PATH environment variable for module resolution
+  - Sets `NODE_PATH` environment variable for module resolution (project `node_modules` first, then base)
   - Executes `prepareproject-nodejs.sh` for dependency management
+  - Runs applications directly with `node {ENTRYPOINT}` command
 
-- **Dependency Management Script**: Added `scripts/prepareproject-nodejs.sh` and `scripts/check-base-dependencies.js`
-  - Base `node_modules` at `/home/user/node_modules` is immutable and never copied
-  - Pre-install check: `check-base-dependencies.js` analyzes project dependencies against base packages
-  - Version compatibility: Uses `semver` to verify if base package versions satisfy project requirements
-  - Avoids duplication: Only installs packages that are missing or have incompatible versions
-  - Uses NODE_PATH for module resolution (project first, then base)
-  - Verifies `node-foxx` binary accessibility from either location
-  - Keeps base image immutable for security scanning
-  - Results in smaller project `node_modules` and `project.tar.gz` files
+- **Dependency Management System**: Added intelligent dependency resolution to avoid duplicating base packages
+  - **`scripts/check-base-dependencies.js`**: Analyzes project dependencies against base packages
+    - Checks if packages exist in base `node_modules` at `/home/user/node_modules`
+    - Uses `semver` to verify version compatibility between base and project requirements
+    - Outputs JSON with packages that need installation (missing or incompatible versions)
+    - Provides detailed dependency analysis summary to stderr
+  
+  - **`scripts/prepareproject-nodejs.sh`**: Installs only missing or incompatible dependencies
+    - Base `node_modules` at `/home/user/node_modules` is immutable and never copied
+    - Pre-install analysis using `check-base-dependencies.js` to identify required packages
+    - Selective installation: only installs packages not available or incompatible in base
+    - Uses `npm install --production --no-save` for each required package
+    - Results in smaller project `node_modules` and `project.tar.gz` files
+    - Maintains base image immutability for security scanning
 
-- **Project Type Detection**: Extended `detect_project_type()` to support:
-  - `python`: Projects with `pyproject.toml`
-  - `express`: Express.js applications with `express` dependency, no `services.json` or `manifest.json`
-  - `foxx`: Multi-service projects with `package.json` and `services.json` (both required)
-  - `foxx-service`: Single service directory with `package.json` only (auto-generates `services.json`)
+- **Project Type Detection**: Extended `detect_project_type()` in `src/main.rs` to support Node.js projects
+  - Detects Node.js projects by presence of `package.json` file
+  - Requires absence of `services.json` and `manifest.json` (distinguishes from Foxx services)
+  - Project type: `nodejs` (for Node.js applications)
+  - Returns error if `services.json` or `manifest.json` is found (not supported)
 
-- **Service Structure Generation**: Simplified structure for single service directories
-  - Copies service directory directly to `/project/{service-name}/` (no wrapper folder)
-  - Generates `services.json` automatically with mount path "/" and basePath "." in the service directory
-  - `package.json` and `services.json` are in the same directory where `node_modules` will be created
+- **Entrypoint Auto-Detection**: Added automatic entrypoint detection for Node.js projects
+  - Function `detect_nodejs_entrypoint()` checks `package.json` `main` field first
+  - Falls back to extracting from `start` script if `main` is not present
+  - Supports scripts like `"start": "node index.js"` format
+  - Provides sensible default (`index.js`) if detection fails
 
-- **Services JSON Generation**: Added `generate_services_json()` function
-  - Automatically generates `services.json` for single service directories (`foxx-service` type)
-  - Configures mount path as "/" (routing handled by Helm chart at deployment)
-  - Sets basePath to "." (relative to WORKDIR where `node-foxx` runs)
-
-- **Package.json Support**: Added functions to read Node.js project metadata
+- **Package.json Metadata Support**: Added functions to read Node.js project metadata
   - `read_name_from_package_json()`: Extracts project name from `package.json`
   - `read_service_info_from_package_json()`: Extracts name and version for Helm charts
+  - Used for auto-detecting project name and generating Helm charts
 
-- **Entrypoint Enhancement**: Updated `baseimages/scripts/entrypoint.sh` to support Node.js/Foxx services
-  - Detects Foxx services by checking for both `package.json` and `services.json`
-  - Automatically runs `node-foxx` for Foxx services (checks project `node_modules` first, then base)
-  - Only supports Foxx services (requires both `package.json` and `services.json`)
-  - Maintains backward compatibility with Python services
+- **Environment Variable Support**: Added support for reading environment variables from `.env.example` files
+  - Function `read_env_example()` automatically reads `.env.example` file if present in project root
+  - Parses `KEY=VALUE` format with support for single and double quotes
+  - Handles comments (lines starting with `#`) and empty lines
+  - Auto-quotes values containing spaces or special characters for Docker `ENV` directives
+  - Injects environment variables into Dockerfile for all project types (Python and Node.js)
+  - Works seamlessly with existing project structures
 
-- **Test Service**: Added `itzpapalotl-node` test service in `testprojects/`
-  - Example Node.js/Foxx service for testing ServiceMaker functionality
-  - Demonstrates service structure generation and dependency management
+- **Default Base Image Constants**: Introduced compile-time constants for default base images
+  - `DEFAULT_PYTHON_BASE_IMAGE`: `"arangodb/py13base:latest"`
+  - `DEFAULT_NODEJS_BASE_IMAGE`: `"arangodb/node22base:latest"`
+  - Automatically selects appropriate default when user doesn't specify base image
+  - Tracks explicit user intent to avoid overriding user choices
 
 ### Changed
 
-- **Main Application Logic**: Extended `src/main.rs` to support Node.js/Foxx and Express projects
-  - Added Express project type detection and handling
-  - Added entrypoint auto-detection for Express apps from `package.json`
+- **Main Application Logic**: Extended `src/main.rs` to support Node.js projects
+  - Added Node.js project type detection and handling in main function
+  - Added entrypoint auto-detection for Node.js projects from `package.json`
   - Added environment variable reading from `.env.example` for all project types
-  - Added Dockerfile modification functions for Express apps (`modify_dockerfile_express`)
-  - Added Express preparation script to embedded scripts list
-  - Added project type detection requiring both `package.json` and `services.json` for `foxx` type
-  - Simplified file copying: projects are copied as-is (no wrapper structure generation)
-  - Base image default handling: Introduced compile-time constants (`DEFAULT_PYTHON_BASE_IMAGE`, `DEFAULT_NODEJS_BASE_IMAGE`)
-  - Explicit user intent tracking: Changed `base_image` to `Option<String>` to detect explicit user choices
-  - Smart defaults: Only sets project-type-specific defaults when user hasn't explicitly set base image
-  - Modified Dockerfile generation to use appropriate template based on project type
-  - Updated Helm chart generation to support all project types (Python, Express, Foxx)
-  - Added `prepareproject-express.sh` to embedded scripts list
-  - No entrypoint required for Foxx services (uses `node-foxx` from base image)
+  - Added Dockerfile modification function for Node.js projects (`modify_dockerfile_nodejs`)
+  - Added Node.js preparation script (`prepareproject-nodejs.sh`) and dependency checker (`check-base-dependencies.js`) to embedded scripts list
+  - Modified Dockerfile generation to use appropriate template based on project type (Python or Node.js)
+  - Updated Helm chart generation to support both Python and Node.js projects
+  - Enhanced project metadata extraction to support both `pyproject.toml` and `package.json`
+  - Updated file copying logic to skip `node_modules` directories (prevents copying local dependencies)
 
-- **Entrypoint Script**: Enhanced `baseimages/scripts/entrypoint.sh` to support Node.js/Foxx services
-  - Added service type detection based on project files
+- **Entrypoint Script**: Enhanced `baseimages/scripts/entrypoint.sh` to support Node.js services
+  - Detects Node.js applications by checking for `package.json` without `services.json` or `manifest.json`
+  - Automatically runs `node {ENTRYPOINT}` for Node.js applications
   - Maintains backward compatibility with Python services
+  - Uses `NODE_PATH` environment variable for module resolution
 
-- **Base Image List**: Updated `baseimages/imagelist.txt` to include `node22base`
+- **Archive Creation Script**: Updated `scripts/zipper.sh` to handle both Python and Node.js projects
+  - Includes `the_venv/` directory for Python projects
+  - Includes project directory (which contains `node_modules/`) for Node.js projects
+  - Provides informational messages when `node_modules` is detected
+  - Enhanced documentation with clear comments explaining both project types
 
-- **File Copying Logic**: Updated `copy_dir_recursive()` to skip `node_modules` directories
-  - Prevents copying local `node_modules` which should be installed in Docker build
-  - Ensures only project source code is copied, dependencies are installed fresh in Docker
+- **File Copying Logic**: Updated `copy_dir_recursive()` in `src/main.rs` to skip `node_modules` directories
+  - Prevents copying local `node_modules` which should be installed fresh in Docker build
+  - Ensures only project source code is copied, dependencies are installed in container
+  - Maintains consistency with Python's `.venv` exclusion
 
-### Fixed
+- **Base Image List**: Updated `baseimages/imagelist.txt` to include `node22base` entry
 
-- **Windows Compatibility**: Fixed Windows build issues in `src/main.rs`
-  - Added conditional compilation for Unix-specific file permissions (`#[cfg(unix)]`)
-  - Windows builds now skip `set_mode()` calls that are Unix-only
+---
 
-### Technical Details
+## [0.9.2] - 2024-XX-XX
 
-For detailed information about:
-- **Node.js/Foxx Services**: Base image structure, service architecture, and module resolution - see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- **Express Applications**: Express app architecture, detection, and deployment - see [docs/ARCHITECTURE_EXPRESS.md](docs/ARCHITECTURE_EXPRESS.md)
-- **Service Comparison**: Differences between Node-Foxx and Express+Arangojs services - see [docs/SERVICE_COMPARISON.md](docs/SERVICE_COMPARISON.md)
+### Features
 
-## [0.9.2] - Previous Release
-
-### Existing Features
 - Python service support with `pyproject.toml`
-- Base image management for Python 3.13
+- Base image management for Python 3.13 (`arangodb/py13base:latest`)
 - Docker image building and pushing
 - Helm chart generation
 - Project tar.gz creation
 - Virtual environment management with `uv`
-
----
-
-## Version History
-
-- **0.9.2**: Initial release with Python support
-- **Unreleased**: Added Node.js/Foxx service support and Express application support
+- Automatic entrypoint detection for Python projects (single .py file)
+- Project metadata extraction from `pyproject.toml`
 
 ---
 
 ## Notes
 
 - All changes maintain backward compatibility with existing Python projects
-- Node.js support (both Foxx and Express) is additive and does not affect Python service functionality
-- Express applications are detected automatically and require no special configuration files
+- Node.js support is additive and does not affect Python service functionality
+- Node.js applications are detected automatically and require no special configuration files
 - Environment variables from `.env.example` are automatically injected into Docker images
-- Base images must be built separately using `baseimages/build.sh`
+- Base images must be built separately using `baseimages/build.sh` before use
 - Windows users should use WSL or Linux environment for building base images
-
+- The dependency checking system ensures efficient builds by avoiding package duplication while maintaining compatibility
