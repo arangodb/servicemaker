@@ -23,7 +23,7 @@ auth:
       - "{SERVICE_NAME}-service"
     policy_statements:
       - actions:
-          - "{SERVICE_NAME}:DatabaseReadWrite"
+          - "db:*"
         resources:
-          - "{SERVICE_NAME}:database:*"
+          - "db:database:*"
         effect: "Allow"

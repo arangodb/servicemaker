@@ -126,6 +126,7 @@ const checkDbInitialized = (req, res, next) => {
 app.get('/api/databases', async (req, res, next) => {
     try {
         const url = req.query.url || process.env.ARANGODB_ENDPOINT || 'http://127.0.0.1:8529';
+        console.log('request.query', req.query);
         let token;
         try {
             token = getToken(req.query.token);
