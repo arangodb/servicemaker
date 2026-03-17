@@ -6,11 +6,56 @@ const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./swagger');
 const itemSchema = require('./schemas');
 const fs = require('fs');
+const { Agent, setGlobalDispatcher } = require('undici');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const DOCUMENT_NOT_FOUND = 1202;
 const collectionName = 'shoppinglist';
+
+// Configure global dispatcher for TLS with CA certificate from ARANGO_DEPLOYMENT_CA
+// This sets up undici's global agent to handle self-signed certificates properly
+// According to arangojs documentation: https://arangodb.github.io/arangojs/
+// Note: undici Agent requires TLS options to be nested in a 'connect' object
+const caPath = process.env.ARANGO_DEPLOYMENT_CA;
+console.log('caPath', caPath);
+console.log('fs.existsSync(caPath)', fs.existsSync(caPath));
+if (caPath && fs.existsSync(caPath)) {
+    try {
+        const ca = fs.readFileSync(caPath, 'utf8');
+        console.log(`Setting up global dispatcher with CA certificate from ${caPath}`);
+        setGlobalDispatcher(
+            new Agent({
+                connect: {
+                    ca: [ca],  // CA certificate as array
+                    rejectUnauthorized: true
+                }
+            })
+        );
+        console.log('Global dispatcher configured with CA certificate for TLS verification');
+    } catch (err) {
+        console.log(`Error reading CA certificate from ${caPath}:`, err.message);
+        console.log('Falling back to disabled certificate verification');
+        // Fallback: disable verification if CA cannot be read
+        setGlobalDispatcher(
+            new Agent({
+                connect: {
+                    rejectUnauthorized: false
+                }
+            })
+        );
+    }
+} else {
+    // CA not available - disable verification (for development/testing or non-TLS environments)
+    console.log('ARANGO_DEPLOYMENT_CA not set or file not found, disabling certificate verification');
+    setGlobalDispatcher(
+        new Agent({
+            connect: {
+                rejectUnauthorized: false
+            }
+        })
+    );
+}
 
 // Global database connection
 let db = null;
@@ -142,12 +187,10 @@ app.get('/api/databases', async (req, res, next) => {
             databaseName: '_system'
         });
         // Connect to _system database to list databases
+        // Global dispatcher from undici handles TLS certificate verification
         const systemDbConn = new Database({
             url,
-            databaseName: '_system',
-            agentOptions: {
-                rejectUnauthorized: false,
-            },
+            databaseName: '_system'
         });
         systemDbConn.useBearerAuth(token);
 
@@ -227,12 +270,10 @@ app.post('/api/init', async (req, res, next) => {
         }
 
         // Connect to _system database first to create the database
+        // Global dispatcher from undici handles TLS certificate verification
         systemDb = new Database({
             url: dbUrl,
-            databaseName: '_system',
-            agentOptions: {
-                rejectUnauthorized: false,
-            },
+            databaseName: '_system'
         });
         systemDb.useBearerAuth(dbToken);
 
@@ -252,12 +293,10 @@ app.post('/api/init', async (req, res, next) => {
         });
 
         // Now connect to the created database
-        db =  new Database({
+        // Global dispatcher from undici handles TLS certificate verification
+        db = new Database({
             url: dbUrl,
-            databaseName: databaseName,
-            agentOptions: {
-                rejectUnauthorized: false,
-            },
+            databaseName: databaseName
         });
         db.useBearerAuth(dbToken);
 
