@@ -44,7 +44,6 @@ if [ -f "package.json" ]; then
         echo "Received: $INSTALL_DATA"
         exit 1
     fi
-    PACKAGES_TO_INSTALL=$(echo "$INSTALL_DATA" | node -e "const data=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(data.packagesToInstall.map(p => p.split('@')[0]).join(' '))")
     
     # Count packages
     TOTAL_DEPS=$(echo "$INSTALL_DATA" | node -e "const data=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(data.totalDependencies)")
@@ -57,14 +56,27 @@ if [ -f "package.json" ]; then
     echo "  Available in base: $FROM_BASE"
     echo "  To install: $TO_INSTALL_COUNT"
     echo ""
-    
-    # Install only packages that are missing or incompatible
-    if [ -n "$PACKAGES_TO_INSTALL" ] && [ "$PACKAGES_TO_INSTALL" != "" ]; then
-        echo "Installing missing/incompatible packages: $PACKAGES_TO_INSTALL"
-        # Install packages individually to avoid installing everything
-        for package_spec in $(echo "$INSTALL_DATA" | node -e "const data=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(data.packagesToInstall.join(' '))"); do
-            npm install --production --no-save "$package_spec"
-        done
+
+    if [ "$TO_INSTALL_COUNT" -gt 0 ]; then
+        # npm 7+ reconciles the full dependency tree from package.json on every
+        # `npm install`, even when a specific package is named.  To prevent it
+        # from re-installing packages already in the base image we temporarily
+        # replace package.json with one that only lists the missing deps.
+        cp package.json package.json.bak
+
+        node -e "
+            const data = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+            const orig = JSON.parse(require('fs').readFileSync('package.json.bak', 'utf8'));
+            const filtered = { ...orig, dependencies: data.filteredDependencies };
+            delete filtered.devDependencies;
+            require('fs').writeFileSync('package.json', JSON.stringify(filtered, null, 2));
+        " <<< "$INSTALL_DATA"
+
+        echo "Installing missing/incompatible packages..."
+        npm install --production
+
+        # Restore the original package.json so the project metadata stays intact
+        mv package.json.bak package.json
         echo "✓ Project-specific dependencies installed"
     else
         echo "✓ All dependencies satisfied by base node_modules (no installation needed)"

@@ -16,6 +16,7 @@ USER user
 # Standard packages are selected to benefit most projects while keeping image size reasonable
 RUN npm init -y && \
     npm install \
+    express@^4.18.2 \
     arangojs@^10.2.2 \
     # Dependency checking utility
     semver@^7.6.3 \

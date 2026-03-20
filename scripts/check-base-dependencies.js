@@ -36,6 +36,7 @@ if (Object.keys(allDependencies).length === 0) {
 // Check which packages need to be installed
 const packagesToInstall = [];
 const packagesFromBase = [];
+const filteredDependencies = {};
 
 for (const [packageName, versionRange] of Object.entries(allDependencies)) {
     const basePackagePath = path.join(BASE_NODE_MODULES, packageName);
@@ -55,21 +56,24 @@ for (const [packageName, versionRange] of Object.entries(allDependencies)) {
             } else {
                 // Package exists but version is incompatible - need to install project version
                 packagesToInstall.push(`${packageName}@${versionRange}`);
+                filteredDependencies[packageName] = versionRange;
             }
         } catch (error) {
             // Error reading base package.json - install to be safe
             console.warn(`Warning: Could not read base package.json for ${packageName}, will install`);
             packagesToInstall.push(`${packageName}@${versionRange}`);
+            filteredDependencies[packageName] = versionRange;
         }
     } else {
         // Package doesn't exist in base - need to install
         packagesToInstall.push(`${packageName}@${versionRange}`);
+        filteredDependencies[packageName] = versionRange;
     }
 }
 
-// Output results to stderr (for user visibility, won't interfere with JSON parsing)
 const output = {
     packagesToInstall: packagesToInstall,
+    filteredDependencies: filteredDependencies,
     packagesFromBase: packagesFromBase.length,
     totalDependencies: Object.keys(allDependencies).length
 };

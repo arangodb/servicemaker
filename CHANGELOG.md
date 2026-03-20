@@ -31,14 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **`scripts/check-base-dependencies.js`**: Analyzes project dependencies against base packages
     - Checks if packages exist in base `node_modules` at `/home/user/node_modules`
     - Uses `semver` to verify version compatibility between base and project requirements
-    - Outputs JSON with packages that need installation (missing or incompatible versions)
+    - Outputs JSON with packages that need installation (missing or incompatible versions) and a `filteredDependencies` object for rewriting `package.json`
     - Provides detailed dependency analysis summary to stderr
   
   - **`scripts/prepareproject-nodejs.sh`**: Installs only missing or incompatible dependencies
     - Base `node_modules` at `/home/user/node_modules` is immutable and never copied
     - Pre-install analysis using `check-base-dependencies.js` to identify required packages
-    - Selective installation: only installs packages not available or incompatible in base
-    - Uses `npm install --production --no-save` for each required package
+    - Temporarily rewrites `package.json` to contain only the missing dependencies before running `npm install --production`, then restores the original — this prevents npm 7+ from reconciling the full dependency tree and re-installing packages already present in the base image
     - Results in smaller project `node_modules` and `project.tar.gz` files
     - Maintains base image immutability for security scanning
 
