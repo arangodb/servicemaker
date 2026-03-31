@@ -13,5 +13,5 @@ uv venv --python $PYTHON_VERSION the_venv
 . the_venv/bin/activate
 uv pip install "$@"
 
-find the_venv -type f -print0 | xargs -0 sha256sum >> sums_sha256
+find the_venv -type f -print0 | xargs -0 sha256sum > sums_sha256
 uv pip freeze > /home/user/constraints.txt
