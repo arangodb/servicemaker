@@ -6,6 +6,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use toml::Value;
 
+// Default base images
+const DEFAULT_PYTHON_BASE_IMAGE: &str = "arangodb/py13base:latest";
+const DEFAULT_NODEJS_BASE_IMAGE: &str = "arangodb/node22base:latest";
+
 // Embedded chart files
 struct ChartFile {
     path: &'static str,
@@ -37,6 +41,14 @@ const CHART_FILES: &[ChartFile] = &[
         path: "templates/service.yaml",
         content: include_str!("../charts/templates/service.yaml"),
     },
+    ChartFile {
+        path: "templates/service-account.yaml",
+        content: include_str!("../charts/templates/service-account.yaml"),
+    },
+    ChartFile {
+        path: "templates/token-permissions.yaml",
+        content: include_str!("../charts/templates/token-permissions.yaml"),
+    },
 ];
 
 // Embedded script files
@@ -51,12 +63,20 @@ const SCRIPT_FILES: &[ScriptFile] = &[
         content: include_str!("../scripts/prepareproject.sh"),
     },
     ScriptFile {
+        path: "prepareproject-nodejs.sh",
+        content: include_str!("../scripts/prepareproject-nodejs.sh"),
+    },
+    ScriptFile {
+        path: "check-base-dependencies.js",
+        content: include_str!("../scripts/check-base-dependencies.js"),
+    },
+    ScriptFile {
         path: "zipper.sh",
         content: include_str!("../scripts/zipper.sh"),
     },
 ];
 
-/// A tool to wrap Python projects as Docker services
+/// A tool to wrap Python and Node.js projects as Docker services
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -64,13 +84,13 @@ struct Args {
     #[arg(long)]
     name: Option<String>,
 
-    /// Path to the folder containing the Python project
+    /// Path to the folder containing the project
     #[arg(long)]
     project_home: Option<PathBuf>,
 
     /// Base Docker image
-    #[arg(long, default_value = "arangodb/py13base:latest")]
-    base_image: String,
+    #[arg(long)]
+    base_image: Option<String>,
 
     /// Exposed port number
     #[arg(long)]
@@ -84,7 +104,9 @@ struct Args {
     #[arg(long, default_value = "false")]
     push: bool,
 
-    /// Name of the Python script to run (relative to project home)
+    /// Name of the entrypoint script to run (relative to project home)
+    /// For Python: e.g., main.py
+    /// For Node.js: e.g., index.js
     #[arg(long)]
     entrypoint: Option<String>,
 
@@ -95,6 +117,9 @@ struct Args {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = Args::parse();
+
+    // Track if base_image was explicitly set by user
+    let base_image_explicitly_set = args.base_image.is_some();
 
     // Get project home first (prompt if needed)
     if args.project_home.is_none() {
@@ -108,11 +133,64 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err(format!("Project home does not exist: {}", project_home.display()).into());
     }
 
-    // Try to get name from pyproject.toml if not provided on command line
-    if args.name.is_none()
-        && let Ok(name) = read_name_from_pyproject(project_home)
-    {
-        args.name = Some(name);
+    // Detect project type: "python" or "nodejs"
+    let project_type = detect_project_type(project_home)?;
+    println!("Detected project type: {}", project_type);
+
+    // Handle project type-specific configuration
+    match project_type.as_str() {
+        "python" => {
+            // Python project: requires pyproject.toml
+            // Try to get name from pyproject.toml if not provided on command line
+            if args.name.is_none()
+                && let Ok(name) = read_name_from_pyproject(project_home)
+            {
+                args.name = Some(name);
+            }
+            
+            // Try to auto-detect entrypoint if exactly one .py file exists
+            if args.entrypoint.is_none()
+                && let Ok(Some(py_file)) = find_single_py_file(project_home)
+            {
+                args.entrypoint = Some(py_file);
+            }
+
+            // Prompt for entrypoint if still not set
+            if args.entrypoint.is_none() {
+                args.entrypoint = Some(prompt("Python entrypoint script (e.g., main.py)")?);
+            }
+
+            // Set default base image for Python if not explicitly set
+            if !base_image_explicitly_set {
+                args.base_image = Some(DEFAULT_PYTHON_BASE_IMAGE.to_string());
+            }
+        }
+        "nodejs" => {
+            // Node.js project: requires package.json (no services.json or manifest.json)
+            // Try to get name from package.json if not provided
+            if args.name.is_none()
+                && let Ok(name) = read_name_from_package_json(project_home)
+            {
+                args.name = Some(name);
+            }
+
+            // Try to auto-detect entrypoint from package.json "main" field or "start" script
+            if args.entrypoint.is_none() {
+                if let Ok(Some(entrypoint)) = detect_nodejs_entrypoint(project_home) {
+                    args.entrypoint = Some(entrypoint);
+                } else {
+                    args.entrypoint = Some("index.js".to_string());
+                }
+            }
+
+            // Set default base image for Node.js if not explicitly set
+            if !base_image_explicitly_set {
+                args.base_image = Some(DEFAULT_NODEJS_BASE_IMAGE.to_string());
+            }
+        }
+        _ => {
+            return Err(format!("Unsupported project type: {}", project_type).into());
+        }
     }
 
     // Prompt for name if still not set
@@ -120,7 +198,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         args.name = Some(prompt("Project name")?);
     }
 
-    let project_dir = project_home.file_name().unwrap().to_str().unwrap();
+    let initial_project_dir = project_home.file_name().unwrap().to_str().unwrap();
 
     if args.port.is_none() {
         let port_str = prompt("Exposed port number")?;
@@ -131,32 +209,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         args.image_name = Some(prompt("Docker image name")?);
     }
 
-    // Try to auto-detect entrypoint if exactly one .py file exists
-    if args.entrypoint.is_none()
-        && let Ok(Some(py_file)) = find_single_py_file(project_home)
-    {
-        args.entrypoint = Some(py_file);
-    }
-
-    // Prompt for entrypoint if still not set
-    if args.entrypoint.is_none() {
-        args.entrypoint = Some(prompt("Python entrypoint script (e.g., main.py)")?);
-    }
-
     let name = args.name.as_ref().unwrap();
     let project_home = args.project_home.as_ref().unwrap();
     let image_name = args.image_name.as_ref().unwrap();
-    let entrypoint = args.entrypoint.as_ref().unwrap();
     let port = args.port.unwrap();
+    let base_image = args.base_image.as_ref().unwrap();
 
     println!("\n=== Configuration ===");
     println!("Project name: {}", name);
+    println!("Project type: {}", project_type);
     println!("Project home: {}", project_home.display());
-    println!("Project directory name: {}", project_dir);
-    println!("Base image: {}", args.base_image);
+    println!("Project directory name: {}", initial_project_dir);
+    println!("Base image: {}", base_image);
     println!("Port: {}", port);
     println!("Image name: {}", image_name);
-    println!("Entrypoint: {}", entrypoint);
+    if let Some(ref entrypoint) = args.entrypoint {
+        println!("Entrypoint: {}", entrypoint);
+    }
     println!("Push: {}", args.push);
     println!("Make tar.gz: {}", args.make_tar_gz);
     println!("=====================\n");
@@ -175,27 +244,54 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     copy_scripts_to_temp(&temp_dir)?;
 
     // Copy project directory to temp directory
-    let project_dest = temp_dir.join(project_dir);
+    // Both Python and Node.js projects are copied directly without any special handling
+    let project_dest = temp_dir.join(initial_project_dir);
     println!(
         "Copying project from {} to {}",
         project_home.display(),
         project_dest.display()
     );
     copy_dir_recursive(project_home, &project_dest)?;
+    let project_dir = initial_project_dir.to_string();
 
-    // Extract Python version from base image name
-    let python_version = extract_python_version(&args.base_image);
+    // Read environment variables from .env.example if it exists
+    let env_vars = read_env_example(project_home)?;
+    if !env_vars.is_empty() {
+        println!("Found {} environment variable(s) in .env.example", env_vars.len());
+    }
 
-    // Read and modify Dockerfile template
-    let dockerfile_template = include_str!("../Dockerfile.template");
-    let modified_dockerfile = modify_dockerfile(
-        dockerfile_template,
-        &args.base_image,
-        project_dir,
-        entrypoint,
-        port,
-        &python_version,
-    );
+    // Choose Dockerfile template and modify based on project type
+    let modified_dockerfile = match project_type.as_str() {
+        "python" => {
+            // Python project: use Python Dockerfile template
+            let python_version = extract_python_version(base_image);
+            let entrypoint = args.entrypoint.as_ref().unwrap();
+            let dockerfile_template = include_str!("../Dockerfile.template");
+            modify_dockerfile_python(
+                dockerfile_template,
+                base_image,
+                &project_dir,
+                entrypoint,
+                port,
+                &python_version,
+                &env_vars,
+            )
+        }
+        "nodejs" => {
+            // Node.js project: use Node.js Dockerfile template
+            let entrypoint = args.entrypoint.as_ref().unwrap();
+            let dockerfile_template = include_str!("../Dockerfile.nodejs.template");
+            modify_dockerfile_nodejs(
+                dockerfile_template,
+                base_image,
+                &project_dir,
+                entrypoint,
+                port,
+                &env_vars,
+            )
+        }
+        _ => return Err("Unsupported project type".into()),
+    };
 
     // Write modified Dockerfile to temp directory
     let dockerfile_path = temp_dir.join("Dockerfile");
@@ -321,9 +417,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Generate Helm chart
     println!("\n=== Generating Helm Chart ===");
-    let (service_name, version) = read_service_info_from_pyproject(project_home)?;
-    println!("Service name from pyproject.toml: {}", service_name);
-    println!("Version from pyproject.toml: {}", version);
+    let (service_name, version) = match project_type.as_str() {
+        "python" => {
+            // Extract service name and version from pyproject.toml
+            let (name, ver) = read_service_info_from_pyproject(project_home)?;
+            println!("Service name from pyproject.toml: {}", name);
+            println!("Version from pyproject.toml: {}", ver);
+            (name, ver)
+        }
+        "nodejs" => {
+            // Extract service name and version from package.json
+            let (name, ver) = read_service_info_from_package_json(project_home)?;
+            println!("Service name from package.json: {}", name);
+            println!("Version from package.json: {}", ver);
+            (name, ver)
+        }
+        _ => return Err("Unsupported project type for Helm chart generation".into()),
+    };
 
     let chart_dir = temp_dir.join(&service_name);
 
@@ -382,7 +492,6 @@ fn prompt(message: &str) -> Result<String, io::Error> {
 }
 
 fn extract_python_version(base_image: &str) -> String {
-    // Extract Python version from base image name (e.g., "py13base" -> "3.13", "py12base" -> "3.12")
     if let Some(py_pos) = base_image.find("py") {
         let after_py = &base_image[py_pos + 2..];
         if let Some(end_pos) = after_py.find(|c: char| !c.is_ascii_digit()) {
@@ -400,20 +509,212 @@ fn extract_python_version(base_image: &str) -> String {
     "3.13".to_string()
 }
 
-fn modify_dockerfile(
+fn modify_dockerfile_python(
     template: &str,
     base_image: &str,
     project_dir: &str,
     entrypoint: &str,
     port: u16,
     python_version: &str,
+    env_vars: &[(String, String)],
 ) -> String {
-    template
+    let mut result = template
         .replace("{BASE_IMAGE}", base_image)
         .replace("{PROJECT_DIR}", project_dir)
         .replace("{PORT}", &port.to_string())
         .replace("{ENTRYPOINT}", entrypoint)
-        .replace("{PYTHON_VERSION}", python_version)
+        .replace("{PYTHON_VERSION}", python_version);
+    
+    // Add environment variables if any
+    if !env_vars.is_empty() {
+        let env_lines: Vec<String> = env_vars
+            .iter()
+            .map(|(key, value)| format!("ENV {}={}", key, value))
+            .collect();
+        let env_block = format!("\n{}", env_lines.join("\n"));
+        
+        // Insert after WORKDIR line
+        if let Some(pos) = result.find("WORKDIR")
+            && let Some(newline_pos) = result[pos..].find('\n') {
+            let insert_pos = pos + newline_pos + 1;
+            result.insert_str(insert_pos, &env_block);
+        }
+    }
+    
+    result
+}
+
+/// Modify Node.js Dockerfile template with project-specific values
+/// Sets up NODE_PATH to resolve from project node_modules first, then base node_modules
+fn modify_dockerfile_nodejs(
+    template: &str,
+    base_image: &str,
+    project_dir: &str,
+    entrypoint: &str,
+    port: u16,
+    env_vars: &[(String, String)],
+) -> String {
+    // Node.js app structure:
+    // - COPY copies the project directory directly
+    // - WORKDIR is /project/{project-dir}
+    // - node_modules is in /project/{project-dir}/node_modules
+    // - NODE_PATH allows resolving from project node_modules first, then base node_modules
+    let node_path = format!("/project/{}/node_modules:/home/user/node_modules", project_dir);
+    
+    let mut result = template
+        .replace("{BASE_IMAGE}", base_image)
+        .replace("{PROJECT_DIR}", project_dir)
+        .replace("{WORKDIR}", project_dir)
+        .replace("{ENTRYPOINT}", entrypoint)
+        .replace("{PORT}", &port.to_string())
+        .replace("{NODE_PATH}", &node_path);
+    
+    // Add environment variables if any
+    if !env_vars.is_empty() {
+        let env_lines: Vec<String> = env_vars
+            .iter()
+            .map(|(key, value)| format!("ENV {}={}", key, value))
+            .collect();
+        let env_block = format!("\n{}", env_lines.join("\n"));
+        
+        // Insert after NODE_PATH ENV line
+        if let Some(pos) = result.find("ENV NODE_PATH")
+            && let Some(newline_pos) = result[pos..].find('\n') {
+            let insert_pos = pos + newline_pos + 1;
+            result.insert_str(insert_pos, &env_block);
+        }
+    }
+    
+    result
+}
+
+/// Read environment variables from .env.example file
+/// Parses KEY=VALUE format and handles quoted values
+fn read_env_example(project_home: &Path) -> Result<Vec<(String, String)>, Box<dyn std::error::Error>> {
+    let env_example_path = project_home.join(".env.example");
+    
+    if !env_example_path.exists() {
+        return Ok(Vec::new());
+    }
+    
+    let content = fs::read_to_string(&env_example_path)?;
+    let mut env_vars = Vec::new();
+    
+    for line in content.lines() {
+        let line = line.trim();
+        
+        // Skip empty lines and comments
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        
+        // Parse KEY=VALUE format
+        if let Some(equal_pos) = line.find('=') {
+            let key = line[..equal_pos].trim().to_string();
+            let mut value = line[equal_pos + 1..].trim().to_string();
+            
+            // Remove quotes if present (handles both single and double quotes)
+            if (value.starts_with('"') && value.ends_with('"')) 
+                || (value.starts_with('\'') && value.ends_with('\'')) {
+                value = value[1..value.len() - 1].to_string();
+            }
+            
+            // Skip if key is empty
+            if !key.is_empty() {
+                // If value contains spaces or special characters, quote it for Docker ENV
+                let final_value = if value.contains(' ') || value.contains('$') || value.contains('\\') {
+                    format!("\"{}\"", value.replace('"', "\\\""))
+                } else {
+                    value
+                };
+                env_vars.push((key, final_value));
+            }
+        }
+    }
+    
+    Ok(env_vars)
+}
+
+/// Detect Node.js entrypoint from package.json
+/// Checks "main" field first, then "start" script
+fn detect_nodejs_entrypoint(project_home: &Path) -> Result<Option<String>, Box<dyn std::error::Error>> {
+    let package_json_path = project_home.join("package.json");
+    
+    if !package_json_path.exists() {
+        return Ok(None);
+    }
+    
+    let content = fs::read_to_string(&package_json_path)?;
+    let value: serde_json::Value = serde_json::from_str(&content)?;
+    
+    // Try to get from "main" field
+    if let Some(main) = value.get("main").and_then(|m| m.as_str()) {
+        return Ok(Some(main.to_string()));
+    }
+    
+    // Try to extract from "start" script
+    if let Some(scripts) = value.get("scripts")
+        && let Some(start) = scripts.get("start").and_then(|s| s.as_str()) {
+        // Extract the script name from "node index.js" or "node app.js"
+        if let Some(script_name) = start.strip_prefix("node ") {
+            return Ok(Some(script_name.trim().to_string()));
+        }
+    }
+    
+    Ok(None)
+}
+
+/// Detect project type: "python" or "nodejs"
+/// Python: has pyproject.toml
+/// Node.js: has package.json (and no services.json or manifest.json)
+fn detect_project_type(project_home: &Path) -> Result<String, Box<dyn std::error::Error>> {
+    let pyproject = project_home.join("pyproject.toml");
+    let package_json = project_home.join("package.json");
+    let services_json = project_home.join("services.json");
+    let manifest_json = project_home.join("manifest.json");
+
+    if pyproject.exists() {
+        // Python project detected
+        Ok("python".to_string())
+    } else if package_json.exists() {
+        // Node.js project: must not have services.json or manifest.json (those are not supported)
+        if services_json.exists() || manifest_json.exists() {
+            return Err(format!(
+                "Node.js projects with services.json or manifest.json are not supported. \
+                This service only supports Python projects and simple Node.js projects with package.json only. \
+                Found in: {}",
+                project_home.display()
+            ).into());
+        }
+        // Simple Node.js project
+        Ok("nodejs".to_string())
+    } else {
+        Err(format!(
+            "Could not detect project type. Expected pyproject.toml (Python) or package.json (Node.js) in: {}",
+            project_home.display()
+        )
+        .into())
+    }
+}
+
+fn read_name_from_package_json(project_home: &Path) -> Result<String, Box<dyn std::error::Error>> {
+    let package_json_path = project_home.join("package.json");
+
+    if !package_json_path.exists() {
+        return Err(format!("package.json not found in: {}", project_home.display()).into());
+    }
+
+    let content = fs::read_to_string(&package_json_path)?;
+    let value: serde_json::Value = serde_json::from_str(&content)?;
+
+    // Extract project name
+    let name = value
+        .get("name")
+        .and_then(|n| n.as_str())
+        .ok_or("Missing 'name' in package.json")?
+        .to_string();
+
+    Ok(name)
 }
 
 fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
@@ -426,8 +727,8 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
         let path = entry.path();
         let file_name = entry.file_name();
 
-        // Skip .venv directories
-        if file_name == ".venv" {
+        // Skip .venv directories (Python) and node_modules (Node.js)
+        if file_name == ".venv" || file_name == "node_modules" {
             continue;
         }
 
@@ -516,6 +817,35 @@ fn read_service_info_from_pyproject(
         .and_then(|p| p.get("version"))
         .and_then(|v| v.as_str())
         .ok_or("Missing 'project.version' in pyproject.toml")?
+        .to_string();
+
+    Ok((name, version))
+}
+
+fn read_service_info_from_package_json(
+    project_home: &Path,
+) -> Result<(String, String), Box<dyn std::error::Error>> {
+    let package_json_path = project_home.join("package.json");
+
+    if !package_json_path.exists() {
+        return Err(format!("package.json not found in: {}", project_home.display()).into());
+    }
+
+    let content = fs::read_to_string(&package_json_path)?;
+    let value: serde_json::Value = serde_json::from_str(&content)?;
+
+    // Extract project name
+    let name = value
+        .get("name")
+        .and_then(|n| n.as_str())
+        .ok_or("Missing 'name' in package.json")?
+        .to_string();
+
+    // Extract version (default to "1.0.0" if not present)
+    let version = value
+        .get("version")
+        .and_then(|v| v.as_str())
+        .unwrap_or("1.0.0")
         .to_string();
 
     Ok((name, version))

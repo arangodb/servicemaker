@@ -11,7 +11,19 @@ imagePullSecrets: []
 # Deployment
 arangodb_platform:
   deployment:
-    name: PLACEHOLDER
+    name: deployment
 
 # Profiles
 profiles: ""
+
+auth:
+  service_token:
+    ttl: "1h"
+    roles:
+      - "{SERVICE_NAME}-service"
+    policy_statements:
+      - actions:
+          - "db:*"
+        resources:
+          - "db:database:*"
+        effect: "Allow"

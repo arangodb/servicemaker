@@ -25,16 +25,26 @@ if test -e project.tar.gz ; then
   tar xzvf project.tar.gz > /dev/null
 fi
 
-# Run the entrypoint if configured:
+# Detect service type and run accordingly
 if test -e entrypoint ; then
   ENTRYPOINT=$(cat entrypoint)
   echo Running project ...
-  . /home/user/.local/bin/env
-  . /home/user/the_venv/bin/activate
-  for p in /project/the_venv/lib/python*/site-packages ; do
-    export PYTHONPATH=$p
-  done
-  exec python $ENTRYPOINT
+  
+  # Check if it's a Node.js application (package.json exists, no services.json or manifest.json)
+  if [ -f "package.json" ]; then
+    # Node.js application
+    echo "Detected Node.js application"
+    exec node $ENTRYPOINT
+  else
+    # Python service (has pyproject.toml or no package.json)
+    echo "Detected Python service"
+    . /home/user/.local/bin/env
+    . /home/user/the_venv/bin/activate
+    for p in /project/the_venv/lib/python*/site-packages ; do
+      export PYTHONPATH=$p
+    done
+    exec python $ENTRYPOINT
+  fi
 fi
 
 echo No entrypoint found, running bash instead...
