@@ -10,9 +10,17 @@ from typing import Any, Dict
 
 from arango.client import ArangoClient
 from arango.exceptions import ArangoError
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import FastAPI, Header, HTTPException, Request, responses
 
 app = FastAPI(title="ArangoDB Service")
+
+UI_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
+
+
+@app.get("/")
+async def ui():
+    """Serve the test UI."""
+    return responses.FileResponse(UI_PATH)
 
 
 def startup_check():
@@ -41,7 +49,6 @@ def get_system_database(token: str):
     try:
         db = client.db(
             name="_system",
-            auth_method="jwt",
             user_token=token
         )
     except Exception as e:
@@ -63,7 +70,6 @@ def get_database(token: str, db_name: str = "test-service"):
     try:
         db = client.db(
             name=db_name,
-            auth_method="jwt",
             user_token=token
         )
     except Exception as e:
@@ -76,16 +82,15 @@ def get_existing_database(token: str, db_name: str = "test-service"):
     """Get authenticated database connection, failing if it doesn't exist."""
     client = get_arango_client()
     sys_db = get_system_database(token)
-    
+
     # Check if database exists
     if not sys_db.has_database(db_name):
         raise ValueError(f"Database '{db_name}' does not exist")
-    
+
     # Use JWT token for authentication
     try:
         db = client.db(
             name=db_name,
-            auth_method="jwt",
             user_token=token
         )
     except Exception as e:

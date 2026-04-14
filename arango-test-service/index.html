@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ArangoDB Service UI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: "Urbanist", Helvetica, Arial, sans-serif;
+            background: #ffffff;
+            color: #202020;
+            min-height: 100vh;
+        }
+
+        /* ---- top bar ---- */
+        .topbar {
+            background: #044926;
+            padding: 1rem 2rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .topbar svg { flex-shrink: 0; }
+        .topbar-title {
+            color: #ffffff;
+            font-size: 1.15rem;
+            font-weight: 600;
+            letter-spacing: 0.01em;
+        }
+
+        /* ---- main content ---- */
+        .container {
+            max-width: 820px;
+            margin: 2.5rem auto;
+            padding: 0 1.5rem;
+        }
+
+        h1 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: #000000;
+            margin-bottom: 0.25rem;
+        }
+        .subtitle {
+            color: #767676;
+            font-size: 1rem;
+            font-weight: 400;
+            margin-bottom: 2rem;
+        }
+
+        /* ---- card ---- */
+        .card {
+            background: #ffffff;
+            border: 1px solid #e4e4e4;
+            border-radius: 6px;
+            padding: 1.75rem;
+            margin-bottom: 1.5rem;
+        }
+
+        label {
+            display: block;
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: #000000;
+            margin-bottom: 0.4rem;
+        }
+        label .hint {
+            font-weight: 400;
+            color: #767676;
+            font-size: 0.82rem;
+        }
+
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 0.65rem 0.85rem;
+            font-family: "Urbanist", Helvetica, Arial, sans-serif;
+            font-size: 0.9rem;
+            color: #202020;
+            background: #fafafa;
+            border: 1px solid #d0d0d0;
+            border-radius: 6px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        input[type="text"]:focus, textarea:focus {
+            border-color: #044926;
+            box-shadow: 0 0 0 2px rgba(4, 73, 38, 0.1);
+        }
+        textarea {
+            min-height: 130px;
+            resize: vertical;
+            font-family: monospace;
+            font-size: 0.85rem;
+        }
+
+        .field + .field { margin-top: 1.25rem; }
+
+        /* ---- buttons ---- */
+        .buttons {
+            margin-top: 1.75rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.6rem;
+        }
+        button {
+            padding: 11px 28px;
+            font-family: "Urbanist", Helvetica, Arial, sans-serif;
+            font-size: 0.92rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 14px;
+            cursor: pointer;
+            transition: opacity 0.15s, transform 0.1s;
+        }
+        button:hover { opacity: 0.88; }
+        button:active { transform: scale(0.97); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .btn-write {
+            background: #044926;
+            color: #ffffff;
+        }
+        .btn-read {
+            background: #b9ff38;
+            color: #000000;
+        }
+        .btn-delete {
+            background: #ffffff;
+            color: #044926;
+            border: 1.5px solid #044926;
+        }
+        .btn-health {
+            background: #fafafa;
+            color: #404040;
+            border: 1.5px solid #d0d0d0;
+        }
+
+        /* ---- response panel ---- */
+        .response-label {
+            margin-top: 2rem;
+            margin-bottom: 0.4rem;
+        }
+        #response {
+            padding: 1rem 1.15rem;
+            background: #fafafa;
+            border: 1px solid #e4e4e4;
+            border-radius: 6px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 0.84rem;
+            color: #404040;
+            min-height: 4.5rem;
+            max-height: 420px;
+            overflow: auto;
+            line-height: 1.55;
+        }
+        #response.error {
+            background: #fef2f2;
+            border-color: #f5a5a5;
+            color: #7f1d1d;
+        }
+        #response.success {
+            background: #f1fde8;
+            border-color: #b9ff38;
+            color: #044926;
+        }
+        .status-line {
+            font-weight: 600;
+            margin-bottom: 0.4rem;
+            font-family: "Urbanist", Helvetica, Arial, sans-serif;
+            font-size: 0.88rem;
+        }
+
+        /* ---- footer ---- */
+        .footer {
+            text-align: center;
+            margin-top: 3rem;
+            padding-bottom: 2rem;
+            color: #767676;
+            font-size: 0.8rem;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- top bar -->
+    <div class="topbar">
+        <svg width="28" height="28" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="50" cy="50" r="46" stroke="#b9ff38" stroke-width="6" fill="none"/>
+            <circle cx="50" cy="26" r="7" fill="#b9ff38"/>
+            <circle cx="28" cy="62" r="7" fill="#b9ff38"/>
+            <circle cx="72" cy="62" r="7" fill="#b9ff38"/>
+            <line x1="50" y1="33" x2="28" y2="55" stroke="#b9ff38" stroke-width="3"/>
+            <line x1="50" y1="33" x2="72" y2="55" stroke="#b9ff38" stroke-width="3"/>
+            <line x1="28" y1="62" x2="72" y2="62" stroke="#b9ff38" stroke-width="3"/>
+        </svg>
+        <span class="topbar-title">ArangoDB Test Service</span>
+    </div>
+
+    <div class="container">
+        <h1>Service Test UI</h1>
+        <p class="subtitle">Write, read, and delete documents against the FastAPI ArangoDB service.</p>
+
+        <div class="card">
+            <div class="field">
+                <label for="token">JWT Token</label>
+                <input type="text" id="token" placeholder="Paste your JWT token here (without 'Bearer ')" />
+            </div>
+
+            <div class="field">
+                <label for="body">Request Body <span class="hint">JSON &mdash; used by Write</span></label>
+                <textarea id="body" placeholder='{"hello": "world"}'>{
+  "hello": "world"
+}</textarea>
+            </div>
+
+            <div class="buttons">
+                <button class="btn-write"  onclick="callApi('POST',   'write',  true)">Write</button>
+                <button class="btn-read"   onclick="callApi('GET',    'read',   false)">Read</button>
+                <button class="btn-delete" onclick="callApi('DELETE', 'delete', false)">Delete</button>
+                <button class="btn-health" onclick="callApi('GET',    'health', false)">Health</button>
+            </div>
+        </div>
+
+        <label class="response-label">Response</label>
+        <div id="response">No request sent yet.</div>
+
+        <div class="footer">Powered by ArangoDB</div>
+    </div>
+
+    <script>
+        async function callApi(method, path, sendBody) {
+            const responseEl = document.getElementById('response');
+            const token = document.getElementById('token').value.trim();
+
+            responseEl.className = '';
+            responseEl.textContent = `Calling ${method} ${path}...`;
+
+            const headers = {};
+            if (token) {
+                headers['Authorization'] = 'Bearer ' + token;
+            }
+
+            const options = { method, headers };
+
+            if (sendBody) {
+                const bodyText = document.getElementById('body').value;
+                try {
+                    JSON.parse(bodyText);
+                } catch (e) {
+                    responseEl.className = 'error';
+                    responseEl.textContent = 'Invalid JSON in request body:\n' + e.message;
+                    return;
+                }
+                headers['Content-Type'] = 'application/json';
+                options.body = bodyText;
+            }
+
+            try {
+                const res = await fetch(path, options);
+                const text = await res.text();
+                let pretty = text;
+                try { pretty = JSON.stringify(JSON.parse(text), null, 2); } catch (_) {}
+
+                responseEl.className = res.ok ? 'success' : 'error';
+                responseEl.innerHTML =
+                    `<div class="status-line">${method} ${path} → ${res.status} ${res.statusText}</div>` +
+                    escapeHtml(pretty);
+            } catch (err) {
+                responseEl.className = 'error';
+                responseEl.textContent = 'Network error: ' + err.message;
+            }
+        }
+
+        function escapeHtml(s) {
+            return s
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+    </script>
+</body>
+</html>
