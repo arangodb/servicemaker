@@ -1,11 +1,10 @@
 FROM ubuntu:24.04
 
 COPY ./scripts /scripts
-RUN /scripts/debinstall.sh
 
 WORKDIR /home/user
 USER user
 
-RUN /scripts/prepareuv.sh 3.13 python-arango phenolrs networkx
+RUN /scripts/prepareuv.sh python-arango phenolrs networkx
 
 CMD [ "/scripts/entrypoint.sh" ]
