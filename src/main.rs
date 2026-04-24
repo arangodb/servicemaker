@@ -7,7 +7,7 @@ use std::process::Command;
 use toml::Value;
 
 // Default base images
-const DEFAULT_PYTHON_BASE_IMAGE: &str = "arangodb/py13base:latest";
+const DEFAULT_PYTHON_BASE_IMAGE: &str = "arangodb/py12base:latest";
 const DEFAULT_NODEJS_BASE_IMAGE: &str = "arangodb/node22base:latest";
 
 // Embedded chart files

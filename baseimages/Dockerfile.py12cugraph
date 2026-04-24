@@ -1,4 +1,4 @@
-FROM arangodb/py13base
+FROM arangodb/py12base
 
 # Use system Python (no custom 3.13)
 RUN /scripts/prepareuv.sh --extra-index-url https://pypi.nvidia.com/ \

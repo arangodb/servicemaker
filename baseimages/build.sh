@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # Build base image first so derived images can reuse its layers
-echo "Building image py13base ..."
-docker build -f "Dockerfile.py13base" -t "arangodb/py13base" .
+echo "Building image py12base ..."
+docker build -f "Dockerfile.py12base" -t "arangodb/py12base" .
 
 for i in $(cat imagelist.txt) ; do
-  if [ "$i" = "py13base" ]; then
+  if [ "$i" = "py12base" ]; then
     continue
   fi
   echo "Building image $i ..."
