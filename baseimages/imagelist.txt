@@ -1,3 +1,4 @@
 py12base
 py12cugraph
 py12torch
+nodebaseimage
