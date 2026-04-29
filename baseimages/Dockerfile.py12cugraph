@@ -1,8 +1,0 @@
-FROM arangodb/py12base
-
-# Use system Python (no custom 3.13)
-RUN /scripts/prepareuv.sh --extra-index-url https://pypi.nvidia.com/ \
-   python-arango phenolrs networkx \
-   cugraph-cu12
-
-CMD [ "/scripts/entrypoint.sh" ]

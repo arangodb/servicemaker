@@ -1,4 +1,4 @@
-py12base
-py12cugraph
-py12torch
-nodebaseimage
+py13base
+py13cugraph
+py13torch
+node22base
