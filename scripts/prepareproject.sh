@@ -6,6 +6,9 @@
 
 set -e
 
+# Install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
 export UV_HTTP_TIMEOUT=3600
 . /home/user/.local/bin/env
 . /home/user/the_venv/bin/activate
@@ -47,7 +50,11 @@ while IFS= read -r filename; do
     cp "$filename" "$DEST_BASE/$filename"
     
     # And remove it in the virtual env:
-    rm -f $FILENAME
+    rm -f "$filename"
 done < "/tmp/newfiles"
 
 rm /tmp/newfiles
+
+# Uninstall uv again
+rm -f /home/user/.local/bin/uv
+rm -f /home/user/.local/bin/uvx

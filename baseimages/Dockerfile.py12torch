@@ -1,0 +1,6 @@
+FROM arangodb/py12base
+
+RUN /scripts/prepareuv.sh python-arango phenolrs \
+    torch torch-geometric torchaudio torchvideo
+
+CMD [ "/scripts/entrypoint.sh" ]
