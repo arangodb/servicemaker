@@ -1,10 +1,6 @@
 FROM ubuntu:24.04
 
 COPY ./scripts /scripts
-# FIX: Convert Windows CRLF → LF and make scripts executable
-RUN apt-get update && apt-get install -y dos2unix \
-    && dos2unix /scripts/*.sh \
-    && chmod +x /scripts/*.sh
 RUN /scripts/debinstall.sh
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
