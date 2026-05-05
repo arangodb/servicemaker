@@ -73,9 +73,9 @@ servicemaker
 
 ServiceMaker uses pre-built base images that provide a robust foundation for Python services. These base images:
 
-- Start with `debian:trixie-slim` for a minimal, secure base
+- Start with `ubuntu:24.04` for a minimal, secure base
 - Include a non-root `user` user with `uv` package manager pre-installed
-- Have a specific Python version (e.g., Python 3.13) pre-installed via `uv`
+- Have a specific Python version (e.g., Python 3.12) pre-installed via `uv`
 - Create a virtual environment called `the_venv` in the user's home directory (`/home/user/the_venv`)
 - Pre-install common libraries into the virtual environment
 - Include a SHA256 checksum file (`sums_sha256`) of all files in the virtual environment for change tracking
@@ -91,7 +91,7 @@ The base image setup ensures that:
 The following base images are available in the `baseimages/` directory:
 
 1. **`arangodb/py12base:latest`** (default)
-   - Python 3.13
+   - Python 3.12
    - Pre-installed packages: `python-arango`, `phenolrs`, `networkx`
 
 2. **`arangodb/py12base:latest`**
@@ -99,7 +99,7 @@ The following base images are available in the `baseimages/` directory:
    - Pre-installed packages: `python-arango`, `phenolrs`, `networkx`
 
 3. **`arangodb/py12cugraph:latest`**
-   - Python 3.13
+   - Python 3.12
    - Pre-installed packages: `python-arango`, `phenolrs`, `networkx`, `cugraph-cu12`
    - Uses NVIDIA PyPI index for CUDA-accelerated graph libraries
 
@@ -149,14 +149,14 @@ This approach ensures that:
 
 ## Python Version
 
-The Python version is determined by the base image you select. The default base image (`arangodb/py12base:latest`) includes Python 3.13.
+The Python version is determined by the base image you select. The default base image (`arangodb/py12base:latest`) includes Python 3.12.
 
 You should declare the Python version in your project's `pyproject.toml` file to match the base image's Python version. The `uv` package manager will use the Python version from the base image's virtual environment.
 
-For example, to use Python 3.13 (matching the default base image):
+For example, to use Python 3.12 (matching the default base image):
 
 ```toml
-requires-python = "==3.13.*"
+requires-python = "==3.12.*"
 ```
 
 When using `uv sync --active`, the tool installs dependencies into the existing virtual environment from the base image, ensuring compatibility with the pre-installed Python version.
@@ -271,7 +271,7 @@ The archive contains a virtual environment with all dependencies. To run your pr
 source the_venv/bin/activate
 
 # Set PYTHONPATH to include the virtual environment's site-packages
-export PYTHONPATH=$(pwd)/the_venv/lib/python3.13/site-packages:$PYTHONPATH
+export PYTHONPATH=$(pwd)/the_venv/lib/python3.12/site-packages:$PYTHONPATH
 
 # Run your entrypoint script
 python entrypoint
@@ -296,7 +296,7 @@ uv run --active main.py
 
 ### Notes
 
-- The Python version must match the base image version (e.g., Python 3.13 for `py12base`)
+- The Python version must match the base image version (e.g., Python 3.12 for `py12base`)
 - The archive includes only the dependencies added by your project, not the base image's pre-installed packages
 - For full functionality, ensure the base image's pre-installed packages are available or install them separately
 - The `entrypoint` symlink points to your entrypoint script relative to the project directory

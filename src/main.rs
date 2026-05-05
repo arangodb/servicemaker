@@ -497,7 +497,7 @@ fn extract_python_version(base_image: &str) -> String {
         if let Some(end_pos) = after_py.find(|c: char| !c.is_ascii_digit()) {
             let version_digits = &after_py[..end_pos];
             if !version_digits.is_empty() {
-                // Convert "13" -> "3.13", "12" -> "3.12", etc.
+                // Convert "12" -> "3.12", etc.
                 return format!("3.{}", version_digits);
             }
         } else if !after_py.is_empty() && after_py.chars().all(|c| c.is_ascii_digit()) {
@@ -506,7 +506,7 @@ fn extract_python_version(base_image: &str) -> String {
         }
     }
     // Default fallback if pattern not found
-    "3.13".to_string()
+    "3.12".to_string()
 }
 
 fn modify_dockerfile_python(

@@ -111,7 +111,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Features
 
 - Python service support with `pyproject.toml`
-- Base image management for Python 3.13 (`arangodb/py12base:latest`)
+- Base image management for Python 3.12 (`arangodb/py12base:latest`)
 - Docker image building and pushing
 - Helm chart generation
 - Project tar.gz creation

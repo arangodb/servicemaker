@@ -7,7 +7,7 @@ It is regularly scanned for security vulnerabilities.
 
 ## Requirements
 
-- Python 3.13+
+- Python 3.12+
 - ArangoDB instance with JWT authentication
 
 ## Installation
