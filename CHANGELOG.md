@@ -67,7 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Works seamlessly with existing project structures
 
 - **Default Base Image Constants**: Introduced compile-time constants for default base images
-  - `DEFAULT_PYTHON_BASE_IMAGE`: `"arangodb/py13base:latest"`
+  - `DEFAULT_PYTHON_BASE_IMAGE`: `"arangodb/py12base:latest"`
   - `DEFAULT_NODEJS_BASE_IMAGE`: `"arangodb/node22base:latest"`
   - Automatically selects appropriate default when user doesn't specify base image
   - Tracks explicit user intent to avoid overriding user choices
@@ -111,7 +111,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Features
 
 - Python service support with `pyproject.toml`
-- Base image management for Python 3.13 (`arangodb/py13base:latest`)
+- Base image management for Python 3.13 (`arangodb/py12base:latest`)
 - Docker image building and pushing
 - Helm chart generation
 - Project tar.gz creation

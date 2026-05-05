@@ -1,5 +1,5 @@
 {
-  "base_image": "arangodb/py13torch:latest",
+  "base_image": "arangodb/py12torch:latest",
   "entrypoint": "hello.py"
 }
 

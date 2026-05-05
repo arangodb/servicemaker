@@ -1,6 +1,0 @@
-FROM arangodb/py13base
-
-RUN /scripts/prepareuv.sh 3.13 python-arango phenolrs \
-    torch torch-geometric torchaudio torchvideo
-
-CMD [ "/scripts/entrypoint.sh" ]

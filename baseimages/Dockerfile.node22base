@@ -15,6 +15,14 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y --no-install-recommends nodejs && \
     npm cache clean --force
 
+# Patch npm's bundled picomatch to 4.0.4+ without self-upgrading npm.
+RUN rm -rf /usr/lib/node_modules/npm/node_modules/picomatch \
+    && mkdir -p /tmp/picomatch \
+    && curl -fsSL https://registry.npmjs.org/picomatch/-/picomatch-4.0.4.tgz -o /tmp/picomatch/picomatch.tgz \
+    && tar -xzf /tmp/picomatch/picomatch.tgz -C /tmp/picomatch \
+    && mv /tmp/picomatch/package /usr/lib/node_modules/npm/node_modules/picomatch \
+    && rm -rf /tmp/picomatch
+
 WORKDIR /home/user
 USER user
 
@@ -23,8 +31,7 @@ RUN npm init -y
 # Apply security overrides to fix vulnerabilities
 RUN npm pkg set "overrides.path-to-regexp=0.1.13" && \
     npm pkg set "overrides.tar=7.5.11" && \
-    npm pkg set "overrides.body-parser=1.20.3" && \
-    npm pkg set "overrides.picomatch=4.0.4"
+    npm pkg set "overrides.body-parser=1.20.3"
 
 # Create base node_modules with standard packages (immutable, pre-scanned)
 # This location is used by all projects and should never be modified
@@ -39,7 +46,7 @@ RUN npm install \
     uuid@9.0.1 \
     dotenv@16.4.5 \
     # HTTP clients
-    axios@1.15.0 \
+    axios@1.15.2 \
     # Validation
     joi@17.13.3 \
     # Logging
