@@ -89,9 +89,9 @@ For Python, I propose to implement the above in the following way: Our tool
 for various Python versions and potentially different selections of 
 pre-installed libs. 
 
-All of them start with the `debian:trixie-slim` image and install a user
+All of them start with the `ubuntu:24.04` image and install a user
 `user` who has `uv` installed. Then they have a certain Python version
-(for now maybe 3.12 and 3.13) preinstalled via `uv` and they create a
+(for now maybe 3.12) preinstalled via `uv` and they create a
 virtual env in the home directory of `user` called `the_venv`. They can
 then preinstall any number of libraries we choose into that virtual
 environment. This is easy to do via `uv pip install` once the virtual
@@ -113,7 +113,7 @@ to a parallel directory hierarchy under `/project/the_venv/...`.
 
 To run the project, we simply activate the virtual environment in 
 `/home/user/the_venv` and additional set the `PYTHONPATH` to also find
-stuff in `/project/the_venv/lib/python3.13/site-packages/` for the 
+stuff in `/project/the_venv/lib/python3.12/site-packages/` for the 
 additional dependencies.
 
 We can then create a single zipfile, which includes all new files as

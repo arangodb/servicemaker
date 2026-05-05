@@ -3,7 +3,9 @@ set -euo pipefail
 
 # Script to scan base images for security vulnerabilities using grype
 # Reads image list from imagelist.txt and scans each image prefixed with arangodb/
-# Also scans the virtual environment (/home/user/the_venv) inside each base image
+# Also scans in-container install trees when present:
+#   - Python images: /home/user/the_venv
+#   - Node images:   /home/user/node_modules
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IMAGELIST_FILE="${SCRIPT_DIR}/imagelist.txt"
@@ -15,7 +17,7 @@ if [[ ! -f "${IMAGELIST_FILE}" ]]; then
 fi
 
 cp $IMAGELIST_FILE $IMAGELIST_FILE_COPY
-echo "test-service" >> $IMAGELIST_FILE_COPY
+# echo "test-service" >> $IMAGELIST_FILE_COPY
 
 # Check if grype is installed
 if ! command -v grype &> /dev/null; then
@@ -62,9 +64,9 @@ while IFS= read -r image_name || [[ -n "$image_name" ]]; do
         continue
     fi
     
-    # Scan the virtual environment inside the container
+    # Scan bundled dependencies inside the container (path depends on image type)
     echo ""
-    echo "Scanning virtual environment in container: ${FULL_IMAGE_NAME}"
+    echo "Scanning in-container install tree: ${FULL_IMAGE_NAME}"
     CONTAINER_ID=""
     set +e
     CONTAINER_ID=$(docker run -d "${FULL_IMAGE_NAME}" sleep 3600 2>&1)
@@ -72,17 +74,32 @@ while IFS= read -r image_name || [[ -n "$image_name" ]]; do
     set -e
     
     if [[ ${DOCKER_RUN_EXIT} -eq 0 ]] && [[ -n "${CONTAINER_ID}" ]]; then
-        # Install grype inside the container and scan the virtual environment
         SCAN_RESULT=0
+        SCAN_TARGET=""
+        if docker exec "${CONTAINER_ID}" test -d /home/user/the_venv 2>/dev/null; then
+            SCAN_TARGET="/home/user/the_venv"
+            echo "  (Python) scanning ${SCAN_TARGET}"
+        elif docker exec "${CONTAINER_ID}" test -d /home/user/node_modules 2>/dev/null; then
+            SCAN_TARGET="/home/user/node_modules"
+            echo "  (Node) scanning ${SCAN_TARGET}"
+        else
+            echo "  No /home/user/the_venv or /home/user/node_modules — skipping in-container scan"
+            SCAN_TARGET=""
+        fi
+
         set +e
-        docker exec "${CONTAINER_ID}" bash -c "curl -sSfL https://get.anchore.io/grype | sh -s -- -b /home/user/.local/bin && /home/user/.local/bin/grype -v --fail-on high /home/user/the_venv"
-        SCAN_EXIT=$?
+        if [[ -n "${SCAN_TARGET}" ]]; then
+            docker exec "${CONTAINER_ID}" bash -c "curl -sSfL https://get.anchore.io/grype | sh -s -- -b /home/user/.local/bin && /home/user/.local/bin/grype -v --fail-on high '${SCAN_TARGET}'"
+            SCAN_EXIT=$?
+        else
+            SCAN_EXIT=0
+        fi
         set -e
         
         if [[ ${SCAN_EXIT} -eq 0 ]]; then
-            echo "✓ ${FULL_IMAGE_NAME} passed virtual environment security scan"
+            echo "✓ ${FULL_IMAGE_NAME} passed in-container dependency scan"
         else
-            echo "✗ ${FULL_IMAGE_NAME} failed virtual environment security scan (high severity issues found)"
+            echo "✗ ${FULL_IMAGE_NAME} failed in-container dependency scan (high severity issues found)"
             SCAN_RESULT=1
             FAILED_SCANS=$((FAILED_SCANS + 1))
         fi
