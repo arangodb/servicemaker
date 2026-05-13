@@ -10,6 +10,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /home/user
 USER user
 
-RUN /scripts/prepareuv.sh python-arango phenolrs networkx
+RUN /scripts/prepareuv.sh python-arango phenolrs networkx 'urllib3>=2.2.0,<3'
 
 CMD [ "/scripts/entrypoint.sh" ]
