@@ -1,0 +1,16 @@
+{
+  "name": "arango-test-service-nodejs",
+  "version": "1.0.0",
+  "description": "Small Express service for ArangoDB operations",
+  "main": "main.js",
+  "scripts": {
+    "start": "node main.js"
+  },
+  "license": "Apache-2.0",
+  "dependencies": {
+    "arangojs": "^10.2.2",
+    "express": "^4.18.2",
+    "swagger-ui-express": "^5.0.0",
+    "undici": "^6.21.2"
+  }
+}
