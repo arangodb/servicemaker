@@ -6,6 +6,7 @@ help:
 	@echo "  release - Build static x86_64 binary and prepare for GitHub release"
 	@echo "  clean   - Clean build artifacts"
 	@echo "  test-servie - Build the Docker image `arangodb/test-service`
+	@echo "  test-service-nodejs - Build the Docker image `arangodb/test-service-nodejs`
 
 # Build static binary for GitHub release
 release:
@@ -47,3 +48,6 @@ clean:
 
 test-service:
 	target/release/servicemaker --project-home arango-test-service --port 8000 --make-tar-gz --push --image-name arangodb/test-service
+
+test-service-nodejs:
+	target/release/servicemaker --project-home arango-test-service-nodejs --port 8000 --make-tar-gz --push --image-name arangodb/test-service-nodejs
