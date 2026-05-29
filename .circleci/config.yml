@@ -72,7 +72,9 @@ jobs:
 
   security-scan:
     docker:
+      # root required: trivy-scan orb installs the binary to /usr/local/bin
       - image: cimg/base:stable
+        user: root
     steps:
       - checkout
       
