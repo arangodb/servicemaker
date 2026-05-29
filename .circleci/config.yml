@@ -43,7 +43,6 @@ commands:
       - trivy-scan/scan:
           <<: *trivy-scan-settings
           image-ref: arangodb/<< parameters.image_name >>
-          timeout: << parameters.scan_timeout >>
 
 jobs:
   build-and-test:
@@ -120,11 +119,9 @@ jobs:
       - build-and-scan-image:
           image_name: test-service
           build_image: false
-          scan_timeout: "30m"
       - build-and-scan-image:
           image_name: test-service-nodejs
           build_image: false
-          scan_timeout: "30m"
       
       - run:
           name: Scan in-container dependency trees (all images)
