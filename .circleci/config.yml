@@ -2,6 +2,13 @@ version: 2.1
 
 orbs:
   slack: circleci/slack@5.1.1
+  trivy-scan: arangodb/trivy-scan@0.0.1
+
+# Shared Trivy scan settings (aligned with platform-ui)
+x-trivy-scan: &trivy-scan-settings
+  severity: "CRITICAL,HIGH"
+  fail-on-findings: true
+  ignore-unfixed: true
 
 parameters:
   security_scan:
@@ -73,19 +80,35 @@ jobs:
       - setup_remote_docker:
           docker_layer_caching: true
       
-      # Install grype
       - run:
-          name: Install grype
-          command: |
-            curl -sSfL https://get.anchore.io/grype | sudo sh -s -- -b /usr/local/bin
-            grype version
+          name: Build base images for scan
+          command: cd baseimages && make build
+          no_output_timeout: 60m
       
-      # Make scan script executable and run it
+      - trivy-scan/scan:
+          <<: *trivy-scan-settings
+          image-ref: arangodb/py12base
+      - trivy-scan/scan:
+          <<: *trivy-scan-settings
+          image-ref: arangodb/py12cugraph
+      - trivy-scan/scan:
+          <<: *trivy-scan-settings
+          image-ref: arangodb/py12torch
+      - trivy-scan/scan:
+          <<: *trivy-scan-settings
+          image-ref: arangodb/node22base
+      - trivy-scan/scan:
+          <<: *trivy-scan-settings
+          image-ref: arangodb/test-service
+      - trivy-scan/scan:
+          <<: *trivy-scan-settings
+          image-ref: arangodb/test-service-nodejs
+      
       - run:
-          name: Scan base images for security vulnerabilities
+          name: Scan in-container dependency trees
           command: |
             chmod +x baseimages/scan_security.sh
-            baseimages/scan_security.sh || (echo "SCAN_FAILED=1" >> $BASH_ENV && exit 1)
+            IN_CONTAINER_ONLY=1 baseimages/scan_security.sh
           no_output_timeout: 30m
       
       # Notify Slack on failure
