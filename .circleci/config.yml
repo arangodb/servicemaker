@@ -2,7 +2,7 @@ version: 2.1
 
 orbs:
   slack: circleci/slack@5.1.1
-  trivy-scan: arangodb/trivy-scan@0.0.1
+  trivy-scan: arangodb/trivy-scan@0.0.3
 
 # Shared Trivy scan settings (aligned with platform-ui)
 x-trivy-scan: &trivy-scan-settings
