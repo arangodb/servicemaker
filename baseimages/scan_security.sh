@@ -1,10 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
-# Scan base/test images for security vulnerabilities using Trivy.
-# CircleCI uses arangodb/trivy-scan orb for image scans; this script handles:
-#   - Local full scans (image + in-container trees)
-#   - CI in-container scans only (IN_CONTAINER_ONLY=1)
+# Scan base/test images for security vulnerabilities.
+# CI: IN_CONTAINER_ONLY=1 after per-image trivy-scan orb steps (image scan uses orb).
+# Local: full image + in-container scan (containerized Trivy when trivy is not on PATH).
 #
 # In-container targets when present:
 #   - Python images: /home/user/the_venv
@@ -13,9 +12,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IMAGELIST_FILE="${SCRIPT_DIR}/imagelist.txt"
 IMAGELIST_FILE_COPY="/tmp/imagelist.txt"
-TRIVY_IMAGE="${TRIVY_IMAGE:-aquasec/trivy:latest}"
+TRIVY_IMAGE="${TRIVY_IMAGE:-aquasec/trivy:0.70.0}"
 TRIVY_SEVERITY="${TRIVY_SEVERITY:-HIGH,CRITICAL}"
 IN_CONTAINER_ONLY="${IN_CONTAINER_ONLY:-0}"
+TRIVY_CACHE_DIR="${TRIVY_CACHE_DIR:-/tmp/trivy-cache}"
 
 if [[ ! -f "${IMAGELIST_FILE}" ]]; then
     echo "Error: imagelist.txt not found at ${IMAGELIST_FILE}" >&2
@@ -43,11 +43,43 @@ scan_image_with_trivy() {
         "${full_image_name}"
 }
 
+run_trivy_fs() {
+    local scan_path="$1"
+    mkdir -p "${TRIVY_CACHE_DIR}"
+
+    if command -v trivy &>/dev/null; then
+        trivy fs \
+            --scanners vuln \
+            --severity "${TRIVY_SEVERITY}" \
+            --ignore-unfixed \
+            --exit-code 1 \
+            "${scan_path}"
+        return $?
+    fi
+
+    docker run --rm \
+        -v "${scan_path}:/scan:ro" \
+        -v "${TRIVY_CACHE_DIR}:/root/.cache/trivy" \
+        "${TRIVY_IMAGE}" fs \
+        --scanners vuln \
+        --severity "${TRIVY_SEVERITY}" \
+        --ignore-unfixed \
+        --exit-code 1 \
+        /scan
+}
+
 scan_in_container_tree() {
     local full_image_name="$1"
+    local image_slug="${full_image_name//\//_}"
     local container_id=""
     local scan_target=""
+    local staging_dir="/tmp/trivy-fs-${image_slug}-$$"
     local scan_exit=0
+
+    cleanup_in_container_scan() {
+        docker rm -f "${container_id}" >/dev/null 2>&1 || true
+        rm -rf "${staging_dir}"
+    }
 
     echo ""
     echo "Scanning in-container install tree: ${full_image_name}"
@@ -61,6 +93,8 @@ scan_in_container_tree() {
         return 1
     fi
 
+    trap cleanup_in_container_scan RETURN
+
     if docker exec "${container_id}" test -d /home/user/the_venv 2>/dev/null; then
         scan_target="/home/user/the_venv"
         echo "  (Python) scanning ${scan_target}"
@@ -69,22 +103,19 @@ scan_in_container_tree() {
         echo "  (Node) scanning ${scan_target}"
     else
         echo "  No /home/user/the_venv or /home/user/node_modules — skipping in-container scan"
-        docker rm -f "${container_id}" >/dev/null 2>&1 || true
         return 0
     fi
 
+    rm -rf "${staging_dir}"
+    mkdir -p "${staging_dir}"
+    # --volumes-from only shares declared volumes, not the full root filesystem.
+    # Copy the dependency tree out, then scan it (host trivy in CI, container fallback locally).
+    docker cp "${container_id}:${scan_target}/." "${staging_dir}/"
+
     set +e
-    docker run --rm \
-        --volumes-from "${container_id}" \
-        "${TRIVY_IMAGE}" fs \
-        --severity "${TRIVY_SEVERITY}" \
-        --ignore-unfixed \
-        --exit-code 1 \
-        "${scan_target}"
+    run_trivy_fs "${staging_dir}"
     scan_exit=$?
     set -e
-
-    docker rm -f "${container_id}" >/dev/null 2>&1 || true
 
     if [[ ${scan_exit} -eq 0 ]]; then
         echo "✓ ${full_image_name} passed in-container dependency scan"

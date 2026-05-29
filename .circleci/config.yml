@@ -18,6 +18,33 @@ parameters:
     type: boolean
     default: false
 
+commands:
+  build-and-scan-image:
+    description: Build image and scan with trivy-scan orb
+    parameters:
+      image_name:
+        type: string
+      build_image:
+        type: boolean
+        default: true
+      scan_timeout:
+        type: string
+        default: "60m"
+    steps:
+      - when:
+          condition: << parameters.build_image >>
+          steps:
+            - run:
+                name: Build arangodb/<< parameters.image_name >>
+                command: |
+                  cd baseimages
+                  docker build -f "Dockerfile.<< parameters.image_name >>" -t "arangodb/<< parameters.image_name >>" .
+                no_output_timeout: << parameters.scan_timeout >>
+      - trivy-scan/scan:
+          <<: *trivy-scan-settings
+          image-ref: arangodb/<< parameters.image_name >>
+          timeout: << parameters.scan_timeout >>
+
 jobs:
   build-and-test:
     docker:
@@ -82,32 +109,31 @@ jobs:
       - setup_remote_docker:
           docker_layer_caching: true
       
-      - run:
-          name: Build base images for scan
-          command: cd baseimages && make build
-          no_output_timeout: 60m
+      - build-and-scan-image:
+          name: Build and scan py12base
+          image_name: py12base
+      - build-and-scan-image:
+          name: Build and scan py12cugraph
+          image_name: py12cugraph
+      - build-and-scan-image:
+          name: Build and scan py12torch
+          image_name: py12torch
+      - build-and-scan-image:
+          name: Build and scan node22base
+          image_name: node22base
+      - build-and-scan-image:
+          name: Scan test-service
+          image_name: test-service
+          build_image: false
+          scan_timeout: "30m"
+      - build-and-scan-image:
+          name: Scan test-service-nodejs
+          image_name: test-service-nodejs
+          build_image: false
+          scan_timeout: "30m"
       
-      - trivy-scan/scan:
-          <<: *trivy-scan-settings
-          image-ref: arangodb/py12base
-      - trivy-scan/scan:
-          <<: *trivy-scan-settings
-          image-ref: arangodb/py12cugraph
-      - trivy-scan/scan:
-          <<: *trivy-scan-settings
-          image-ref: arangodb/py12torch
-      - trivy-scan/scan:
-          <<: *trivy-scan-settings
-          image-ref: arangodb/node22base
-      - trivy-scan/scan:
-          <<: *trivy-scan-settings
-          image-ref: arangodb/test-service
-      - trivy-scan/scan:
-          <<: *trivy-scan-settings
-          image-ref: arangodb/test-service-nodejs
-      
       - run:
-          name: Scan in-container dependency trees
+          name: Scan in-container dependency trees (all images)
           command: |
             chmod +x baseimages/scan_security.sh
             IN_CONTAINER_ONLY=1 baseimages/scan_security.sh
