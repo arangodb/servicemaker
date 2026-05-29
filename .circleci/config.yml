@@ -110,24 +110,18 @@ jobs:
           docker_layer_caching: true
       
       - build-and-scan-image:
-          name: Build and scan py12base
           image_name: py12base
       - build-and-scan-image:
-          name: Build and scan py12cugraph
           image_name: py12cugraph
       - build-and-scan-image:
-          name: Build and scan py12torch
           image_name: py12torch
       - build-and-scan-image:
-          name: Build and scan node22base
           image_name: node22base
       - build-and-scan-image:
-          name: Scan test-service
           image_name: test-service
           build_image: false
           scan_timeout: "30m"
       - build-and-scan-image:
-          name: Scan test-service-nodejs
           image_name: test-service-nodejs
           build_image: false
           scan_timeout: "30m"
