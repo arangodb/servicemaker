@@ -46,7 +46,7 @@ RUN npm install \
     uuid@9.0.1 \
     dotenv@16.4.5 \
     # HTTP clients
-    axios@1.15.2 \
+    axios@1.16.0 \
     # Validation
     joi@17.13.3 \
     # Logging

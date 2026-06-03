@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Node.js Base Image**: Added `baseimages/Dockerfile.node22base` for creating Node.js 22 base images
   - Base image `arangodb/node22base:latest` provides immutable foundation for all Node.js services
   - Installs Node.js 22 from NodeSource
-  - Pre-installs common packages with version pinning: `arangojs@^10.2.2`, `semver@^7.6.3`, `lodash@^4.17.21`, `dayjs@^1.11.10`, `uuid@^9.0.1`, `dotenv@^16.4.5`, `axios@^1.7.2`, `joi@^17.13.3`, `winston@^3.15.0`, `async@^3.2.5`, `jsonwebtoken@^9.0.2`, `bcrypt@^5.1.1`
+  - Pre-installs common packages with version pinning: `arangojs@^10.2.2`, `semver@^7.6.3`, `lodash@^4.17.21`, `dayjs@^1.11.10`, `uuid@^9.0.1`, `dotenv@^16.4.5`, `axios@^1.16.0`, `joi@^17.13.3`, `winston@^3.15.0`, `async@^3.2.5`, `jsonwebtoken@^9.0.2`, `bcrypt@^5.1.1`
   - Creates base `node_modules` at `/home/user/node_modules` with SHA256 checksums for dependency tracking
   - Base image is immutable and pre-scanned for security vulnerabilities
   - Added to `baseimages/imagelist.txt` as `node22base`
