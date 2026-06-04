@@ -79,7 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Base images are built in CI before scan; test-service images are scanned from Docker Hub (`build_image: false`)
   - Image CVE scanning via `arangodb/trivy-scan` orb (`CRITICAL`/`HIGH`, `ignore-unfixed`, fail on findings)
   - In-container dependency scan for `/home/user/the_venv` (Python) and `/home/user/node_modules` (Node) via `baseimages/scan_security.sh`
-  - Single Slack notification per workflow run (`security-scan-notify` job; requires `CIRCLE_TOKEN` in `slack-secrets` context)
+  - Single Slack notification per workflow run (`security-scan-notify` uses CircleCI API via `circleci-token` context / `CIRCLECI_TOKEN`)
 
 - **Manual base image rebuild workflow**: Extended `rebuild-base-images-manual` (pipeline parameter `rebuild_base_images=true`)
   - Builds and pushes all base images from `baseimages/imagelist.txt`
