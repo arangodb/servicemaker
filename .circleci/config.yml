@@ -134,14 +134,13 @@ jobs:
       - run:
           name: Check security scan results
           command: |
-            # Requires CIRCLE_TOKEN (project API token) in slack-secrets context
-            if [ -z "${CIRCLE_TOKEN:-}" ]; then
-              echo "ERROR: CIRCLE_TOKEN is not set (add project API token to slack-secrets context)" >&2
+            if [ -z "${CIRCLECI_TOKEN:-}" ]; then
+              echo "ERROR: CIRCLECI_TOKEN is not set (add circleci-token context to security-scan-notify)" >&2
               exit 1
             fi
             SCAN_JOBS="py12base py12cugraph py12torch node22base test-service test-service-nodejs"
             API_URL="https://circleci.com/api/v2/workflow/${CIRCLE_WORKFLOW_ID}/job"
-            RESPONSE=$(curl -sf -H "Circle-Token: ${CIRCLE_TOKEN}" "${API_URL}")
+            RESPONSE=$(curl -sf -H "Circle-Token: ${CIRCLECI_TOKEN}" "${API_URL}")
             FAILED_JOBS=""
             for job in ${SCAN_JOBS}; do
               STATUS=$(echo "${RESPONSE}" | jq -r --arg n "${job}" '.items[] | select(.name == $n) | .status' | head -1)
@@ -247,8 +246,10 @@ workflows:
           image_name: test-service-nodejs
           build_image: false
       - security-scan-notify:
-          context: slack-secrets
-          # terminal = run after each scan finishes (success or failure); optional: is not valid YAML here
+          context:
+            - slack-secrets
+            - circleci-token
+          # terminal = run after each scan finishes (success or failure)
           requires:
             - py12base: terminal
             - py12cugraph: terminal
