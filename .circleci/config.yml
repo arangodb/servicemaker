@@ -242,19 +242,14 @@ workflows:
           build_image: false
       - security-scan-notify:
           context: slack-secrets
+          # terminal = run after each scan finishes (success or failure); optional: is not valid YAML here
           requires:
-            - py12base:
-                optional: true
-            - py12cugraph:
-                optional: true
-            - py12torch:
-                optional: true
-            - node22base:
-                optional: true
-            - test-service:
-                optional: true
-            - test-service-nodejs:
-                optional: true
+            - py12base: terminal
+            - py12cugraph: terminal
+            - py12torch: terminal
+            - node22base: terminal
+            - test-service: terminal
+            - test-service-nodejs: terminal
   
   rebuild-base-images-manual:
     when: << pipeline.parameters.rebuild_base_images >>
