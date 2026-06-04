@@ -72,6 +72,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Automatically selects appropriate default when user doesn't specify base image
   - Tracks explicit user intent to avoid overriding user choices
 
+#### CI security scanning (Trivy)
+
+- **Nightly security scan workflow**: Added `security-scan-nightly` (pipeline parameter `security_scan=true`)
+  - Six parallel `security-scan` jobs (one per image): `py12base`, `py12cugraph`, `py12torch`, `node22base`, `test-service`, `test-service-nodejs`
+  - Base images are built in CI before scan; test-service images are scanned from Docker Hub (`build_image: false`)
+  - Image CVE scanning via `arangodb/trivy-scan` orb (`CRITICAL`/`HIGH`, `ignore-unfixed`, fail on findings)
+  - In-container dependency scan for `/home/user/the_venv` (Python) and `/home/user/node_modules` (Node) via `baseimages/scan_security.sh`
+  - Single Slack notification per workflow run (`security-scan-notify` job; requires `CIRCLE_TOKEN` in `slack-secrets` context)
+
+- **Manual base image rebuild workflow**: Extended `rebuild-base-images-manual` (pipeline parameter `rebuild_base_images=true`)
+  - Builds and pushes all base images from `baseimages/imagelist.txt`
+  - Also builds and pushes `arangodb/test-service` and `arangodb/test-service-nodejs` via `make test-service` / `make test-service-nodejs`
+
 ### Changed
 
 - **Main Application Logic**: Extended `src/main.rs` to support Node.js projects
@@ -103,6 +116,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Maintains consistency with Python's `.venv` exclusion
 
 - **Base Image List**: Updated `baseimages/imagelist.txt` to include `node22base` entry
+
+- **Security scanning**: Replaced Grype with Trivy for local and CI scans in `baseimages/scan_security.sh`
+  - In-container scans copy dependency trees from the running container (`docker cp`) before `trivy fs`, fixing `--volumes-from` path visibility issues
+  - Reuses host Trivy and `/tmp/trivy-cache` when available after orb image scans in CI
 
 ---
 

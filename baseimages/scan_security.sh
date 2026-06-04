@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Scan base/test images for security vulnerabilities.
-# CI: IN_CONTAINER_ONLY=1 after per-image trivy-scan orb steps (image scan uses orb).
+# CI: per-image jobs use SCAN_SINGLE_IMAGE + IN_CONTAINER_ONLY=1 after trivy-scan orb.
 # Local: full image + in-container scan (containerized Trivy when trivy is not on PATH).
 #
 # In-container targets when present:
@@ -15,6 +15,7 @@ IMAGELIST_FILE_COPY="/tmp/imagelist.txt"
 TRIVY_IMAGE="${TRIVY_IMAGE:-aquasec/trivy:0.70.0}"
 TRIVY_SEVERITY="${TRIVY_SEVERITY:-HIGH,CRITICAL}"
 IN_CONTAINER_ONLY="${IN_CONTAINER_ONLY:-0}"
+SCAN_SINGLE_IMAGE="${SCAN_SINGLE_IMAGE:-}"
 TRIVY_CACHE_DIR="${TRIVY_CACHE_DIR:-/tmp/trivy-cache}"
 
 if [[ ! -f "${IMAGELIST_FILE}" ]]; then
@@ -136,6 +137,10 @@ while IFS= read -r image_name || [[ -n "$image_name" ]]; do
     [[ -z "$image_name" || "$image_name" =~ ^[[:space:]]*# ]] && continue
     image_name=$(echo "$image_name" | xargs)
     [[ -z "$image_name" ]] && continue
+
+    if [[ -n "${SCAN_SINGLE_IMAGE}" && "${image_name}" != "${SCAN_SINGLE_IMAGE}" ]]; then
+        continue
+    fi
 
     FULL_IMAGE_NAME="arangodb/${image_name}"
     TOTAL_SCANS=$((TOTAL_SCANS + 1))
