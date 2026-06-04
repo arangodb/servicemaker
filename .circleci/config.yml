@@ -192,7 +192,13 @@ jobs:
             cd baseimages
             make push
      
-      # Build and push test-service images
+      - run:
+          name: Install Helm
+          command: |
+            curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+            helm version
+
+      # Build and push test-service images (servicemaker runs helm lint/package)
       - run:
           name: Build and push test-service images
           command: |
