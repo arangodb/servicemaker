@@ -20,7 +20,7 @@ parameters:
 
 commands:
   build-and-scan-image:
-    description: Build image and scan with trivy-scan orb
+    description: Build image (optional) and scan with trivy-scan orb
     parameters:
       image_name:
         type: string
@@ -38,7 +38,11 @@ commands:
                 name: Build arangodb/<< parameters.image_name >>
                 command: |
                   cd baseimages
-                  docker build -f "Dockerfile.<< parameters.image_name >>" -t "arangodb/<< parameters.image_name >>" .
+                  IMAGE="<< parameters.image_name >>"
+                  if [ "${IMAGE}" = "py12cugraph" ] || [ "${IMAGE}" = "py12torch" ]; then
+                    docker build -f Dockerfile.py12base -t arangodb/py12base .
+                  fi
+                  docker build -f "Dockerfile.${IMAGE}" -t "arangodb/${IMAGE}" .
                 no_output_timeout: << parameters.scan_timeout >>
       - trivy-scan/scan:
           <<: *trivy-scan-settings
@@ -97,6 +101,12 @@ jobs:
           command: cargo run --release --bin integration_tests -- --no-zip-test
 
   security-scan:
+    parameters:
+      image_name:
+        type: string
+      build_image:
+        type: boolean
+        default: true
     docker:
       # root required: trivy-scan orb installs the binary to /usr/local/bin
       - image: cimg/base:stable
@@ -107,30 +117,43 @@ jobs:
       # Setup Docker
       - setup_remote_docker:
           docker_layer_caching: true
-      
       - build-and-scan-image:
-          image_name: py12base
-      - build-and-scan-image:
-          image_name: py12cugraph
-      - build-and-scan-image:
-          image_name: py12torch
-      - build-and-scan-image:
-          image_name: node22base
-      - build-and-scan-image:
-          image_name: test-service
-          build_image: false
-      - build-and-scan-image:
-          image_name: test-service-nodejs
-          build_image: false
-      
+          image_name: << parameters.image_name >>
+          build_image: << parameters.build_image >>
       - run:
-          name: Scan in-container dependency trees (all images)
+          name: In-container scan arangodb/<< parameters.image_name >>
           command: |
             chmod +x baseimages/scan_security.sh
-            IN_CONTAINER_ONLY=1 baseimages/scan_security.sh
+            SCAN_SINGLE_IMAGE=<< parameters.image_name >> IN_CONTAINER_ONLY=1 baseimages/scan_security.sh
           no_output_timeout: 30m
-      
-      # Notify Slack on failure
+
+  security-scan-notify:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - run:
+          name: Check security scan results
+          command: |
+            if [ -z "${CIRCLECI_TOKEN:-}" ]; then
+              echo "ERROR: CIRCLECI_TOKEN is not set (add circleci-token context to security-scan-notify)" >&2
+              exit 1
+            fi
+            SCAN_JOBS="py12base py12cugraph py12torch node22base test-service test-service-nodejs"
+            API_URL="https://circleci.com/api/v2/workflow/${CIRCLE_WORKFLOW_ID}/job"
+            RESPONSE=$(curl -sf -H "Circle-Token: ${CIRCLECI_TOKEN}" "${API_URL}")
+            FAILED_JOBS=""
+            for job in ${SCAN_JOBS}; do
+              STATUS=$(echo "${RESPONSE}" | jq -r --arg n "${job}" '.items[] | select(.name == $n) | .status' | head -1)
+              if [ "${STATUS}" = "failed" ] || [ "${STATUS}" = "canceled" ]; then
+                FAILED_JOBS="${FAILED_JOBS} ${job}"
+              fi
+            done
+            if [ -n "${FAILED_JOBS}" ]; then
+              echo "Security scan failed for:${FAILED_JOBS}"
+              echo "Workflow: ${CIRCLE_WORKFLOW_URL}"
+              exit 1
+            fi
+            echo "All security scan jobs passed."
       - slack/notify:
           event: fail
           mentions: '@neunhoef'
@@ -139,7 +162,7 @@ jobs:
 
   rebuild-base-images:
     docker:
-      - image: cimg/base:stable
+      - image: cimg/rust:1.90
     steps:
       - checkout
       
@@ -167,7 +190,20 @@ jobs:
           command: |
             cd baseimages
             make push
-          
+     
+      - run:
+          name: Install Helm
+          command: |
+            curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+            helm version
+
+      # Build and push test-service images (servicemaker runs helm lint/package)
+      - run:
+          name: Build and push test-service images
+          command: |
+            cargo build --release
+            make test-service test-service-nodejs
+          no_output_timeout: 60m
 workflows:
   version: 2
   build-and-test:
@@ -184,8 +220,43 @@ workflows:
   security-scan-nightly:
     when: << pipeline.parameters.security_scan >>
     jobs:
+      # Parallel jobs
       - security-scan:
-          context: slack-secrets
+          name: py12base
+          image_name: py12base
+          build_image: true
+      - security-scan:
+          name: py12cugraph
+          image_name: py12cugraph
+          build_image: true
+      - security-scan:
+          name: py12torch
+          image_name: py12torch
+          build_image: true
+      - security-scan:
+          name: node22base
+          image_name: node22base
+          build_image: true
+      - security-scan:
+          name: test-service
+          image_name: test-service
+          build_image: false
+      - security-scan:
+          name: test-service-nodejs
+          image_name: test-service-nodejs
+          build_image: false
+      - security-scan-notify:
+          context:
+            - slack-secrets
+            - circleci-token
+          # terminal = run after each scan finishes (success or failure)
+          requires:
+            - py12base: terminal
+            - py12cugraph: terminal
+            - py12torch: terminal
+            - node22base: terminal
+            - test-service: terminal
+            - test-service-nodejs: terminal
   
   rebuild-base-images-manual:
     when: << pipeline.parameters.rebuild_base_images >>
