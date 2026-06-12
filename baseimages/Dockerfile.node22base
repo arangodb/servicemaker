@@ -13,7 +13,9 @@ RUN apt-get update && \
 
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y --no-install-recommends nodejs && \
-    npm cache clean --force
+    npm cache clean --force && \
+    apt-get upgrade -y && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Patch npm's bundled picomatch to 4.0.4+ without self-upgrading npm.
 RUN rm -rf /usr/lib/node_modules/npm/node_modules/picomatch \
