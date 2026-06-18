@@ -33,7 +33,8 @@ RUN npm init -y
 # Apply security overrides to fix vulnerabilities
 RUN npm pkg set "overrides.path-to-regexp=0.1.13" && \
     npm pkg set "overrides.tar=7.5.11" && \
-    npm pkg set "overrides.body-parser=1.20.3"
+    npm pkg set "overrides.body-parser=1.20.3" && \
+    npm pkg set "overrides.form-data=4.0.6"
 
 # Create base node_modules with standard packages (immutable, pre-scanned)
 # This location is used by all projects and should never be modified
