@@ -74,6 +74,10 @@ const SCRIPT_FILES: &[ScriptFile] = &[
         path: "zipper.sh",
         content: include_str!("../scripts/zipper.sh"),
     },
+    ScriptFile {
+        path: "nvidia_lib_path.sh",
+        content: include_str!("../baseimages/scripts/nvidia_lib_path.sh"),
+    },
 ];
 
 /// A tool to wrap Python and Node.js projects as Docker services
