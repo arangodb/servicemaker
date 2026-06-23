@@ -40,6 +40,7 @@ if test -e entrypoint ; then
     echo "Detected Python service"
     . /home/user/.local/bin/env
     . /home/user/the_venv/bin/activate
+    . /scripts/nvidia_lib_path.sh
     for p in /project/the_venv/lib/python*/site-packages ; do
       export PYTHONPATH=$p
     done

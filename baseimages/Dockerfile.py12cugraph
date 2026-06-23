@@ -4,4 +4,14 @@ RUN /scripts/prepareuv.sh --extra-index-url https://pypi.nvidia.com/ \
    python-arango phenolrs networkx \
    cugraph-cu12
 
+# NVIDIA wheels ship libcugraph.so under site-packages; expose those dirs to the linker.
+USER root
+RUN { find /home/user/the_venv -path '*/nvidia/*/lib' -type d 2>/dev/null; \
+      find /home/user/the_venv -path '*/libcugraph/lib64' -type d 2>/dev/null; \
+      find /home/user/the_venv -name 'libcugraph.so*' -exec dirname {} \; 2>/dev/null; } \
+    | sort -u | paste -sd: - > /home/user/.nvidia_ld_library_path \
+    && chown user:user /home/user/.nvidia_ld_library_path \
+    && test -s /home/user/.nvidia_ld_library_path
+USER user
+
 CMD [ "/scripts/entrypoint.sh" ]
