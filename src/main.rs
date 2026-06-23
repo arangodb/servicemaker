@@ -74,6 +74,10 @@ const SCRIPT_FILES: &[ScriptFile] = &[
         path: "zipper.sh",
         content: include_str!("../scripts/zipper.sh"),
     },
+    ScriptFile {
+        path: "nvidia_lib_path.sh",
+        content: include_str!("../baseimages/scripts/nvidia_lib_path.sh"),
+    },
 ];
 
 /// A tool to wrap Python and Node.js projects as Docker services
@@ -147,7 +151,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             {
                 args.name = Some(name);
             }
-            
+
             // Try to auto-detect entrypoint if exactly one .py file exists
             if args.entrypoint.is_none()
                 && let Ok(Some(py_file)) = find_single_py_file(project_home)
@@ -257,7 +261,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Read environment variables from .env.example if it exists
     let env_vars = read_env_example(project_home)?;
     if !env_vars.is_empty() {
-        println!("Found {} environment variable(s) in .env.example", env_vars.len());
+        println!(
+            "Found {} environment variable(s) in .env.example",
+            env_vars.len()
+        );
     }
 
     // Choose Dockerfile template and modify based on project type
@@ -524,7 +531,7 @@ fn modify_dockerfile_python(
         .replace("{PORT}", &port.to_string())
         .replace("{ENTRYPOINT}", entrypoint)
         .replace("{PYTHON_VERSION}", python_version);
-    
+
     // Add environment variables if any
     if !env_vars.is_empty() {
         let env_lines: Vec<String> = env_vars
@@ -532,15 +539,16 @@ fn modify_dockerfile_python(
             .map(|(key, value)| format!("ENV {}={}", key, value))
             .collect();
         let env_block = format!("\n{}", env_lines.join("\n"));
-        
+
         // Insert after WORKDIR line
         if let Some(pos) = result.find("WORKDIR")
-            && let Some(newline_pos) = result[pos..].find('\n') {
+            && let Some(newline_pos) = result[pos..].find('\n')
+        {
             let insert_pos = pos + newline_pos + 1;
             result.insert_str(insert_pos, &env_block);
         }
     }
-    
+
     result
 }
 
@@ -559,8 +567,11 @@ fn modify_dockerfile_nodejs(
     // - WORKDIR is /project/{project-dir}
     // - node_modules is in /project/{project-dir}/node_modules
     // - NODE_PATH allows resolving from project node_modules first, then base node_modules
-    let node_path = format!("/project/{}/node_modules:/home/user/node_modules", project_dir);
-    
+    let node_path = format!(
+        "/project/{}/node_modules:/home/user/node_modules",
+        project_dir
+    );
+
     let mut result = template
         .replace("{BASE_IMAGE}", base_image)
         .replace("{PROJECT_DIR}", project_dir)
@@ -568,7 +579,7 @@ fn modify_dockerfile_nodejs(
         .replace("{ENTRYPOINT}", entrypoint)
         .replace("{PORT}", &port.to_string())
         .replace("{NODE_PATH}", &node_path);
-    
+
     // Add environment variables if any
     if !env_vars.is_empty() {
         let env_lines: Vec<String> = env_vars
@@ -576,91 +587,99 @@ fn modify_dockerfile_nodejs(
             .map(|(key, value)| format!("ENV {}={}", key, value))
             .collect();
         let env_block = format!("\n{}", env_lines.join("\n"));
-        
+
         // Insert after NODE_PATH ENV line
         if let Some(pos) = result.find("ENV NODE_PATH")
-            && let Some(newline_pos) = result[pos..].find('\n') {
+            && let Some(newline_pos) = result[pos..].find('\n')
+        {
             let insert_pos = pos + newline_pos + 1;
             result.insert_str(insert_pos, &env_block);
         }
     }
-    
+
     result
 }
 
 /// Read environment variables from .env.example file
 /// Parses KEY=VALUE format and handles quoted values
-fn read_env_example(project_home: &Path) -> Result<Vec<(String, String)>, Box<dyn std::error::Error>> {
+fn read_env_example(
+    project_home: &Path,
+) -> Result<Vec<(String, String)>, Box<dyn std::error::Error>> {
     let env_example_path = project_home.join(".env.example");
-    
+
     if !env_example_path.exists() {
         return Ok(Vec::new());
     }
-    
+
     let content = fs::read_to_string(&env_example_path)?;
     let mut env_vars = Vec::new();
-    
+
     for line in content.lines() {
         let line = line.trim();
-        
+
         // Skip empty lines and comments
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
-        
+
         // Parse KEY=VALUE format
         if let Some(equal_pos) = line.find('=') {
             let key = line[..equal_pos].trim().to_string();
             let mut value = line[equal_pos + 1..].trim().to_string();
-            
+
             // Remove quotes if present (handles both single and double quotes)
-            if (value.starts_with('"') && value.ends_with('"')) 
-                || (value.starts_with('\'') && value.ends_with('\'')) {
+            if (value.starts_with('"') && value.ends_with('"'))
+                || (value.starts_with('\'') && value.ends_with('\''))
+            {
                 value = value[1..value.len() - 1].to_string();
             }
-            
+
             // Skip if key is empty
             if !key.is_empty() {
                 // If value contains spaces or special characters, quote it for Docker ENV
-                let final_value = if value.contains(' ') || value.contains('$') || value.contains('\\') {
-                    format!("\"{}\"", value.replace('"', "\\\""))
-                } else {
-                    value
-                };
+                let final_value =
+                    if value.contains(' ') || value.contains('$') || value.contains('\\') {
+                        format!("\"{}\"", value.replace('"', "\\\""))
+                    } else {
+                        value
+                    };
                 env_vars.push((key, final_value));
             }
         }
     }
-    
+
     Ok(env_vars)
 }
 
 /// Detect Node.js entrypoint from package.json
 /// Checks "main" field first, then "start" script
-fn detect_nodejs_entrypoint(project_home: &Path) -> Result<Option<String>, Box<dyn std::error::Error>> {
+fn detect_nodejs_entrypoint(
+    project_home: &Path,
+) -> Result<Option<String>, Box<dyn std::error::Error>> {
     let package_json_path = project_home.join("package.json");
-    
+
     if !package_json_path.exists() {
         return Ok(None);
     }
-    
+
     let content = fs::read_to_string(&package_json_path)?;
     let value: serde_json::Value = serde_json::from_str(&content)?;
-    
+
     // Try to get from "main" field
     if let Some(main) = value.get("main").and_then(|m| m.as_str()) {
         return Ok(Some(main.to_string()));
     }
-    
+
     // Try to extract from "start" script
     if let Some(scripts) = value.get("scripts")
-        && let Some(start) = scripts.get("start").and_then(|s| s.as_str()) {
+        && let Some(start) = scripts.get("start").and_then(|s| s.as_str())
+    {
         // Extract the script name from "node index.js" or "node app.js"
         if let Some(script_name) = start.strip_prefix("node ") {
             return Ok(Some(script_name.trim().to_string()));
         }
     }
-    
+
     Ok(None)
 }
 
