@@ -1,149 +1,97 @@
 # Changelog
 
-All notable changes to ServiceMaker will be documented in this file.
+All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
 ### Added
 
-#### Node.js Project Support
-
-- **Node.js Base Image**: Added `baseimages/Dockerfile.node22base` for creating Node.js 22 base images
-  - Base image `arangodb/node22base:latest` provides immutable foundation for all Node.js services
-  - Installs Node.js 22 from NodeSource
-  - Pre-installs common packages with version pinning: `arangojs@^10.2.2`, `semver@^7.6.3`, `lodash@^4.17.21`, `dayjs@^1.11.10`, `uuid@^9.0.1`, `dotenv@^16.4.5`, `axios@^1.16.0`, `joi@^17.13.3`, `winston@^3.15.0`, `async@^3.2.5`, `jsonwebtoken@^9.0.2`, `bcrypt@^5.1.1`
-  - Creates base `node_modules` at `/home/user/node_modules` with SHA256 checksums for dependency tracking
-  - Base image is immutable and pre-scanned for security vulnerabilities
-  - Added to `baseimages/imagelist.txt` as `node22base`
-
-- **Node.js Dockerfile Template**: Created `Dockerfile.nodejs.template` for building Node.js service images
-  - Uses Node.js 22 base image (`arangodb/node22base:latest`)
-  - Copies project directory directly to `/project/{project-name}/`
-  - Configures working directory and user permissions
-  - Sets `NODE_PATH` environment variable for module resolution (project `node_modules` first, then base)
-  - Executes `prepareproject-nodejs.sh` for dependency management
-  - Runs applications directly with `node {ENTRYPOINT}` command
-
-- **Dependency Management System**: Added intelligent dependency resolution to avoid duplicating base packages
-  - **`scripts/check-base-dependencies.js`**: Analyzes project dependencies against base packages
-    - Checks if packages exist in base `node_modules` at `/home/user/node_modules`
-    - Uses `semver` to verify version compatibility between base and project requirements
-    - Outputs JSON with packages that need installation (missing or incompatible versions) and a `filteredDependencies` object for rewriting `package.json`
-    - Provides detailed dependency analysis summary to stderr
-  
-  - **`scripts/prepareproject-nodejs.sh`**: Installs only missing or incompatible dependencies
-    - Base `node_modules` at `/home/user/node_modules` is immutable and never copied
-    - Pre-install analysis using `check-base-dependencies.js` to identify required packages
-    - Temporarily rewrites `package.json` to contain only the missing dependencies before running `npm install --production`, then restores the original — this prevents npm 7+ from reconciling the full dependency tree and re-installing packages already present in the base image
-    - Results in smaller project `node_modules` and `project.tar.gz` files
-    - Maintains base image immutability for security scanning
-
-- **Project Type Detection**: Extended `detect_project_type()` in `src/main.rs` to support Node.js projects
-  - Detects Node.js projects by presence of `package.json` file
-  - Requires absence of `services.json` and `manifest.json` (distinguishes from Foxx services)
-  - Project type: `nodejs` (for Node.js applications)
-  - Returns error if `services.json` or `manifest.json` is found (not supported)
-
-- **Entrypoint Auto-Detection**: Added automatic entrypoint detection for Node.js projects
-  - Function `detect_nodejs_entrypoint()` checks `package.json` `main` field first
-  - Falls back to extracting from `start` script if `main` is not present
-  - Supports scripts like `"start": "node index.js"` format
-  - Provides sensible default (`index.js`) if detection fails
-
-- **Package.json Metadata Support**: Added functions to read Node.js project metadata
-  - `read_name_from_package_json()`: Extracts project name from `package.json`
-  - `read_service_info_from_package_json()`: Extracts name and version for Helm charts
-  - Used for auto-detecting project name and generating Helm charts
-
-- **Environment Variable Support**: Added support for reading environment variables from `.env.example` files
-  - Function `read_env_example()` automatically reads `.env.example` file if present in project root
-  - Parses `KEY=VALUE` format with support for single and double quotes
-  - Handles comments (lines starting with `#`) and empty lines
-  - Auto-quotes values containing spaces or special characters for Docker `ENV` directives
-  - Injects environment variables into Dockerfile for all project types (Python and Node.js)
-  - Works seamlessly with existing project structures
-
-- **Default Base Image Constants**: Introduced compile-time constants for default base images
-  - `DEFAULT_PYTHON_BASE_IMAGE`: `"arangodb/py12base:latest"`
-  - `DEFAULT_NODEJS_BASE_IMAGE`: `"arangodb/node22base:latest"`
-  - Automatically selects appropriate default when user doesn't specify base image
-  - Tracks explicit user intent to avoid overriding user choices
-
-#### CI security scanning (Trivy)
-
-- **Nightly security scan workflow**: Added `security-scan-nightly` (pipeline parameter `security_scan=true`)
-  - Six parallel `security-scan` jobs (one per image): `py12base`, `py12cugraph`, `py12torch`, `node22base`, `test-service`, `test-service-nodejs`
-  - Base images are built in CI before scan; test-service images are scanned from Docker Hub (`build_image: false`)
-  - Image CVE scanning via `arangodb/trivy-scan` orb (`CRITICAL`/`HIGH`, `ignore-unfixed`, fail on findings)
-  - In-container dependency scan for `/home/user/the_venv` (Python) and `/home/user/node_modules` (Node) via `baseimages/scan_security.sh`
-  - Single Slack notification per workflow run (`security-scan-notify` uses CircleCI API via `circleci-token` context / `CIRCLECI_TOKEN`)
-
-- **Manual base image rebuild workflow**: Extended `rebuild-base-images-manual` (pipeline parameter `rebuild_base_images=true`)
-  - Builds and pushes all base images from `baseimages/imagelist.txt`
-  - Also builds and pushes `arangodb/test-service` and `arangodb/test-service-nodejs` via `make test-service` / `make test-service-nodejs`
+- Node.js 22 project support with automatic detection from `package.json`
+- Node.js base image (`arangodb/node22base:latest`) with pre-installed common packages
+- Smart Node.js dependency resolution that installs only packages missing from or incompatible with the base image
+- Automatic Node.js entrypoint detection from `package.json`
+- Environment variable injection from `.env.example` files
+- Python 3.12 base images (`py12base`, `py12cugraph`, `py12torch`)
+- Node.js reference test service (`arango-test-service-nodejs`)
+- Runtime project archive download for BYOC deployments via `ARCHIVE_FILE` or `projectURL`
+- NVIDIA GPU library path setup for cuGraph and PyTorch services
+- Nightly Trivy security scan with parallel jobs for all base and test-service images
+- Manual base image rebuild workflow in CircleCI
 
 ### Changed
 
-- **Main Application Logic**: Extended `src/main.rs` to support Node.js projects
-  - Added Node.js project type detection and handling in main function
-  - Added entrypoint auto-detection for Node.js projects from `package.json`
-  - Added environment variable reading from `.env.example` for all project types
-  - Added Dockerfile modification function for Node.js projects (`modify_dockerfile_nodejs`)
-  - Added Node.js preparation script (`prepareproject-nodejs.sh`) and dependency checker (`check-base-dependencies.js`) to embedded scripts list
-  - Modified Dockerfile generation to use appropriate template based on project type (Python or Node.js)
-  - Updated Helm chart generation to support both Python and Node.js projects
-  - Enhanced project metadata extraction to support both `pyproject.toml` and `package.json`
-  - Updated file copying logic to skip `node_modules` directories (prevents copying local dependencies)
+- Default Python base image changed from 3.13 to 3.12
+- Base images migrated to `ubuntu:24.04` with layered builds
+- Helm charts updated for Node.js services and auth labels
+- Security scanning migrated from Grype to Trivy
+- Entrypoint script supports both Python and Node.js services
+- Archive creation (`--make-tar-gz`) supports Node.js projects
 
-- **Entrypoint Script**: Enhanced `baseimages/scripts/entrypoint.sh` to support Node.js services
-  - Detects Node.js applications by checking for `package.json` without `services.json` or `manifest.json`
-  - Automatically runs `node {ENTRYPOINT}` for Node.js applications
-  - Maintains backward compatibility with Python services
-  - Uses `NODE_PATH` environment variable for module resolution
+### Removed
 
-- **Archive Creation Script**: Updated `scripts/zipper.sh` to handle both Python and Node.js projects
-  - Includes `the_venv/` directory for Python projects
-  - Includes project directory (which contains `node_modules/`) for Node.js projects
-  - Provides informational messages when `node_modules` is detected
-  - Enhanced documentation with clear comments explaining both project types
+- Python 3.13 base images (`py13base`, `py13cugraph`, `py13torch`)
 
-- **File Copying Logic**: Updated `copy_dir_recursive()` in `src/main.rs` to skip `node_modules` directories
-  - Prevents copying local `node_modules` which should be installed fresh in Docker build
-  - Ensures only project source code is copied, dependencies are installed in container
-  - Maintains consistency with Python's `.venv` exclusion
+### Fixed
 
-- **Base Image List**: Updated `baseimages/imagelist.txt` to include `node22base` entry
+- Integration test failures for base images
+- CI `security-scan-notify` and `rebuild-base-images-manual` workflows
+- In-container Trivy scan path visibility issues
+- Integration test preparation script issues
 
-- **Security scanning**: Replaced Grype with Trivy for local and CI scans in `baseimages/scan_security.sh`
-  - In-container scans copy dependency trees from the running container (`docker cp`) before `trivy fs`, fixing `--volumes-from` path visibility issues
-  - Reuses host Trivy and `/tmp/trivy-cache` when available after orb image scans in CI
+### Security
 
----
+- Run `apt-get upgrade` during base image builds to patch OS-level vulnerabilities
+- Upgraded `axios` to 1.16.0 in the Node.js base image
+- Patched vulnerabilities in test service dependencies and base images
 
-## [0.9.2] - 2024-XX-XX
+## [1.0.0] - 2025-11-27
 
-### Features
+### Added
 
-- Python service support with `pyproject.toml`
-- Base image management for Python 3.12 (`arangodb/py12base:latest`)
-- Docker image building and pushing
-- Helm chart generation
-- Project tar.gz creation
-- Virtual environment management with `uv`
-- Automatic entrypoint detection for Python projects (single .py file)
-- Project metadata extraction from `pyproject.toml`
+- Python reference test service (`arango-test-service`)
+- CircleCI workflow for building and pushing Docker images to Docker Hub
+- Makefile release targets and Docker Hub setup documentation
 
----
+### Changed
 
-## Notes
+- Security scan configuration updated for the test-service image
 
-- All changes maintain backward compatibility with existing Python projects
-- Node.js support is additive and does not affect Python service functionality
-- Node.js applications are detected automatically and require no special configuration files
-- Environment variables from `.env.example` are automatically injected into Docker images
-- Base images must be built separately using `baseimages/build.sh` before use
-- Windows users should use WSL or Linux environment for building base images
-- The dependency checking system ensures efficient builds by avoiding package duplication while maintaining compatibility
+## [0.9.3] - 2025-11-27
+
+### Added
+
+- Automatic entrypoint detection when a project contains a single Python file
+- Integration tests now pull base images explicitly and clean up old test directories
+
+### Changed
+
+- Helm route configuration prepends `/_services` to the Envoy mount path
+- Upgraded Rust crate dependencies
+
+## [0.9.1] - 2025-11-24
+
+### Changed
+
+- Entrypoint script no longer needs to be marked executable
+- Updated Dockerfile template and entrypoint startup command handling
+
+## [0.9.0] - 2025-11-21
+
+### Added
+
+- Python project support with Docker image building and optional registry push
+- Python 3.13 base images with `uv` virtual environment management
+- Helm chart generation for Kubernetes deployment
+- Project archive creation with `--make-tar-gz`
+- Nightly Grype security scan workflow with Slack notifications
+- Integration test suite with Helm deployment validation
+- CircleCI pipeline for building, testing, and scanning
+
+[unreleased]: https://github.com/arangodb/servicemaker/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/arangodb/servicemaker/compare/v0.9.3...v1.0.0
+[0.9.3]: https://github.com/arangodb/servicemaker/compare/v0.9.1...v0.9.3
+[0.9.1]: https://github.com/arangodb/servicemaker/compare/v0.9.0...v0.9.1
+[0.9.0]: https://github.com/arangodb/servicemaker/releases/tag/v0.9.0
