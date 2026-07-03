@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- CI: Bump the `trivy-scan` orb 0.0.3 → 0.1.0. The vulnerability DB is now cached under a daily-rotating key (the old static key never refreshed — CircleCI caches are immutable) with a ghcr.io registry fallback. Nightly image scans keep failing on fixable CRITICAL/HIGH CVEs, now also report findings into the CircleCI Tests tab and store a CycloneDX SBOM artifact per image. New warn-only `dependency-cve-scan` filesystem scan (Cargo.lock etc.) runs on every branch build; flip its `fail-on-findings` to `true` to make it a PR gate.
+
 ## [1.1.0] - 2026-06-24
 
 ### Added
