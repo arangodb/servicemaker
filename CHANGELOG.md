@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Patched npm's bundled `sigstore` to 4.1.1 in the Node.js 22 base image (CVE-2026-48815)
+- Added `sigstore` override to the Node.js test service `package.json`
+
 ## [1.1.0] - 2026-06-24
 
 ### Added
