@@ -17,13 +17,24 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get upgrade -y && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Patch npm's bundled picomatch to 4.0.4+ without self-upgrading npm.
-RUN rm -rf /usr/lib/node_modules/npm/node_modules/picomatch \
+# Patch npm's bundled dependencies without self-upgrading npm.
+RUN NPM_MODULES=/usr/lib/node_modules/npm/node_modules \
+    && rm -rf "${NPM_MODULES}/picomatch" \
     && mkdir -p /tmp/picomatch \
     && curl -fsSL https://registry.npmjs.org/picomatch/-/picomatch-4.0.4.tgz -o /tmp/picomatch/picomatch.tgz \
     && tar -xzf /tmp/picomatch/picomatch.tgz -C /tmp/picomatch \
-    && mv /tmp/picomatch/package /usr/lib/node_modules/npm/node_modules/picomatch \
-    && rm -rf /tmp/picomatch
+    && mv /tmp/picomatch/package "${NPM_MODULES}/picomatch" \
+    && rm -rf /tmp/picomatch \
+    && mkdir -p /tmp/sigstore-patch \
+    && cd /tmp/sigstore-patch \
+    && npm init -y >/dev/null 2>&1 \
+    && npm install sigstore@4.1.1 --omit=dev --no-package-lock \
+    && rm -rf "${NPM_MODULES}/sigstore" "${NPM_MODULES}/@sigstore" \
+    && cp -r node_modules/sigstore "${NPM_MODULES}/" \
+    && cp -r node_modules/@sigstore "${NPM_MODULES}/" \
+    && mkdir -p "${NPM_MODULES}/@gar" \
+    && ([ -d node_modules/@gar ] && cp -r node_modules/@gar/. "${NPM_MODULES}/@gar/" || true) \
+    && rm -rf /tmp/sigstore-patch
 
 WORKDIR /home/user
 USER user
@@ -34,7 +45,8 @@ RUN npm init -y
 RUN npm pkg set "overrides.path-to-regexp=0.1.13" && \
     npm pkg set "overrides.tar=7.5.11" && \
     npm pkg set "overrides.body-parser=1.20.3" && \
-    npm pkg set "overrides.form-data=4.0.6"
+    npm pkg set "overrides.form-data=4.0.6" && \
+    npm pkg set "overrides.sigstore=4.1.1"
 
 # Create base node_modules with standard packages (immutable, pre-scanned)
 # This location is used by all projects and should never be modified
