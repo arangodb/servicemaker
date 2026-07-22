@@ -18,6 +18,8 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Patch npm's bundled dependencies without self-upgrading npm.
+# Trivy full-image scans include /usr/lib/node_modules/npm/node_modules, so
+# overrides on /home/user/package.json alone do not clear those findings.
 RUN NPM_MODULES=/usr/lib/node_modules/npm/node_modules \
     && rm -rf "${NPM_MODULES}/picomatch" \
     && mkdir -p /tmp/picomatch \
@@ -25,16 +27,33 @@ RUN NPM_MODULES=/usr/lib/node_modules/npm/node_modules \
     && tar -xzf /tmp/picomatch/picomatch.tgz -C /tmp/picomatch \
     && mv /tmp/picomatch/package "${NPM_MODULES}/picomatch" \
     && rm -rf /tmp/picomatch \
-    && mkdir -p /tmp/sigstore-patch \
-    && cd /tmp/sigstore-patch \
+    && mkdir -p /tmp/npm-dep-patch \
+    && cd /tmp/npm-dep-patch \
     && npm init -y >/dev/null 2>&1 \
-    && npm install sigstore@4.1.1 --omit=dev --no-package-lock \
+    && npm install \
+        sigstore@4.1.1 \
+        tar@7.5.19 \
+        brace-expansion@2.1.2 \
+        --omit=dev --no-package-lock \
     && rm -rf "${NPM_MODULES}/sigstore" "${NPM_MODULES}/@sigstore" \
     && cp -r node_modules/sigstore "${NPM_MODULES}/" \
     && cp -r node_modules/@sigstore "${NPM_MODULES}/" \
     && mkdir -p "${NPM_MODULES}/@gar" \
     && ([ -d node_modules/@gar ] && cp -r node_modules/@gar/. "${NPM_MODULES}/@gar/" || true) \
-    && rm -rf /tmp/sigstore-patch
+    && rm -rf "${NPM_MODULES}/tar" "${NPM_MODULES}/brace-expansion" \
+        "${NPM_MODULES}/chownr" "${NPM_MODULES}/yallist" \
+        "${NPM_MODULES}/minipass" "${NPM_MODULES}/minizlib" \
+        "${NPM_MODULES}/balanced-match" \
+    && cp -r node_modules/tar "${NPM_MODULES}/" \
+    && cp -r node_modules/brace-expansion "${NPM_MODULES}/" \
+    && cp -r node_modules/chownr "${NPM_MODULES}/" \
+    && cp -r node_modules/yallist "${NPM_MODULES}/" \
+    && cp -r node_modules/minipass "${NPM_MODULES}/" \
+    && cp -r node_modules/minizlib "${NPM_MODULES}/" \
+    && cp -r node_modules/balanced-match "${NPM_MODULES}/" \
+    && mkdir -p "${NPM_MODULES}/@isaacs" \
+    && ([ -d node_modules/@isaacs ] && cp -r node_modules/@isaacs/. "${NPM_MODULES}/@isaacs/" || true) \
+    && rm -rf /tmp/npm-dep-patch
 
 WORKDIR /home/user
 USER user
