@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Patched npm's bundled `sigstore` to 4.1.1 in the Node.js 22 base image (CVE-2026-48815)
 - Added `sigstore` override to the Node.js test service `package.json`
+- Upgraded `axios` to 1.18.0 in the Node.js base image (GHSA-gcfj-64vw-6mp9)
+- Bumped `tar` override to 7.5.19 (CVE-2026-59873, CVE-2026-59874)
+- Added `brace-expansion` override to 2.1.2 (CVE-2026-13149)
 
 ## [1.1.0] - 2026-06-24
 
