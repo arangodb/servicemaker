@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - CI: Bump the `trivy-scan` orb 0.0.3 → 1.0. The vulnerability DB is now cached under a daily-rotating key (the old static key never refreshed — CircleCI caches are immutable) and pulled via the mirror.gcr.io → ECR → ghcr.io registry chain. Nightly image scans keep failing on fixable CRITICAL/HIGH CVEs, now also report findings into the CircleCI Tests tab and store a CycloneDX SBOM artifact per image. New `dependency-cve-scan` filesystem scan (Cargo.lock etc.) runs on every branch build with `fail-on-findings: true`, gating the PR on fixable CRITICAL/HIGH CVEs.
+- CI: Nightly `security-scan` jobs now also run a report-only MEDIUM/LOW/UNKNOWN pass (`ignore-unfixed: false`) over the same already-scanned image, surfaced in the Tests tab. The existing CRITICAL/HIGH `fail-on-findings: true` scan remains the only gate.
+- CI: `rebuild-base-images-manual` now scans each base image (`py12base`, `py12cugraph`, `py12torch`, `node22base`) with the same CRITICAL/HIGH gate immediately after `make build` and before `make push`, closing the previously unscanned window between a manual rebuild and the next nightly schedule run.
 
 ### Security
 

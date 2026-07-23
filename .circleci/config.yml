@@ -52,6 +52,18 @@ commands:
       - store_artifacts:
           path: /tmp/sbom.cdx.json
           destination: sbom/<< parameters.image_name >>.cdx.json
+      # Report-only MEDIUM/LOW/UNKNOWN visibility pass over the SAME already
+      # built/scanned image (no rebuild, no second pull). Widens severity and
+      # drops ignore-unfixed so drift that the CRITICAL/HIGH gate above
+      # intentionally hides is still visible in the Tests tab; fail-on-findings
+      # stays false so it never blocks the nightly workflow -- the gate above
+      # remains the sole blocking scan.
+      - trivy-scan/scan:
+          image-ref: arangodb/<< parameters.image_name >>
+          severity: "CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN"
+          ignore-unfixed: false
+          fail-on-findings: false
+          store-junit-results: true
 
 jobs:
   build-and-test:
@@ -206,7 +218,42 @@ jobs:
             cd baseimages
             make build
           no_output_timeout: 60m
-      
+
+      # Gate the push on the SAME CRITICAL/HIGH policy as the PR-time and
+      # nightly image scans: these images previously shipped to Docker Hub
+      # with zero scan coverage between builds, leaving up to 24h unscanned
+      # until the next "Daily" schedule run. Scanning the freshly built local
+      # images here (before push) closes that window instead of relying on
+      # post-hoc detection.
+      - trivy-scan/scan:
+          <<: *trivy-scan-settings
+          image-ref: arangodb/py12base
+          sbom-output: /tmp/sbom-py12base.cdx.json
+      - store_artifacts:
+          path: /tmp/sbom-py12base.cdx.json
+          destination: sbom/py12base.cdx.json
+      - trivy-scan/scan:
+          <<: *trivy-scan-settings
+          image-ref: arangodb/py12cugraph
+          sbom-output: /tmp/sbom-py12cugraph.cdx.json
+      - store_artifacts:
+          path: /tmp/sbom-py12cugraph.cdx.json
+          destination: sbom/py12cugraph.cdx.json
+      - trivy-scan/scan:
+          <<: *trivy-scan-settings
+          image-ref: arangodb/py12torch
+          sbom-output: /tmp/sbom-py12torch.cdx.json
+      - store_artifacts:
+          path: /tmp/sbom-py12torch.cdx.json
+          destination: sbom/py12torch.cdx.json
+      - trivy-scan/scan:
+          <<: *trivy-scan-settings
+          image-ref: arangodb/node22base
+          sbom-output: /tmp/sbom-node22base.cdx.json
+      - store_artifacts:
+          path: /tmp/sbom-node22base.cdx.json
+          destination: sbom/node22base.cdx.json
+
       # Push base images
       - run:
           name: Push base images to Docker Hub
