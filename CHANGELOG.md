@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - CI: Bump the `trivy-scan` orb 0.0.3 → 0.1.1. The vulnerability DB is now cached under a daily-rotating key (the old static key never refreshed — CircleCI caches are immutable) and pulled via the mirror.gcr.io → ECR → ghcr.io registry chain. Nightly image scans keep failing on fixable CRITICAL/HIGH CVEs, now also report findings into the CircleCI Tests tab and store a CycloneDX SBOM artifact per image. New warn-only `dependency-cve-scan` filesystem scan (Cargo.lock etc.) runs on every branch build; flip its `fail-on-findings` to `true` to make it a PR gate.
 
+### Security
+
+- Patched npm's bundled `sigstore` to 4.1.1 in the Node.js 22 base image (CVE-2026-48815)
+- Added `sigstore` override to the Node.js test service `package.json`
+- Upgraded `axios` to 1.18.0 in the Node.js base image (GHSA-gcfj-64vw-6mp9)
+- Bumped `tar` override to 7.5.19 (CVE-2026-59873, CVE-2026-59874)
+- Added `brace-expansion` override to 2.1.2 (CVE-2026-13149)
+- Patched npm's bundled `tar` and `brace-expansion` in the Node.js 22 base image (full-image Trivy scans)
+- Added `tar` and `brace-expansion` overrides to the Node.js test service `package.json`
+
 ## [1.1.0] - 2026-06-24
 
 ### Added
