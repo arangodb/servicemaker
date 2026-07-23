@@ -2,7 +2,7 @@ version: 2.1
 
 orbs:
   slack: circleci/slack@5.1.1
-  trivy-scan: arangodb/trivy-scan@0.1.1
+  trivy-scan: arangodb/trivy-scan@1.0
 
 # Shared Trivy scan settings (aligned with platform-ui)
 x-trivy-scan: &trivy-scan-settings
@@ -106,8 +106,7 @@ jobs:
           command: cargo run --release --bin integration_tests -- --no-zip-test
 
   # Filesystem CVE scan of the checked-out repo (Cargo.lock etc.).
-  # Warn-only for now: findings show up in the Tests tab but do not fail the
-  # job. Flip fail-on-findings to true to make it a PR gate.
+  # Gates the build: findings show up in the Tests tab and fail the job.
   dependency-cve-scan:
     docker:
       - image: cimg/base:stable
@@ -117,8 +116,12 @@ jobs:
           scan-type: fs
           scan-path: "."
           severity: "CRITICAL,HIGH"
-          fail-on-findings: false
+          fail-on-findings: true
           store-junit-results: true
+          sbom-output: /tmp/sbom.cdx.json
+      - store_artifacts:
+          path: /tmp/sbom.cdx.json
+          destination: sbom/dependency-cve-scan.cdx.json
 
   security-scan:
     parameters:
