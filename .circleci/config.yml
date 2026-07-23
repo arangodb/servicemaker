@@ -52,12 +52,34 @@ commands:
       - store_artifacts:
           path: /tmp/sbom.cdx.json
           destination: sbom/<< parameters.image_name >>.cdx.json
+      # The orb's scan command always writes/stores its results at the fixed
+      # destinations trivy-results.json / trivy-results.txt (no output-path
+      # parameter exists to override this). Two trivy-scan/scan invocations
+      # in the same job therefore collide: without this copy, the report-only
+      # pass below silently overwrites the CRITICAL/HIGH gate's stored
+      # artifact before anyone can see it. Preserve the gate's results under
+      # a distinct destination BEFORE the report pass re-runs and clobbers
+      # the shared /tmp/trivy-results.* files.
+      - run:
+          name: Preserve CRITICAL/HIGH gate scan results (<< parameters.image_name >>)
+          command: |
+            mkdir -p /tmp/trivy-gate-results
+            cp /tmp/trivy-results.json /tmp/trivy-gate-results/<< parameters.image_name >>-gate-trivy-results.json
+            cp /tmp/trivy-results.txt /tmp/trivy-gate-results/<< parameters.image_name >>-gate-trivy-results.txt
+      - store_artifacts:
+          path: /tmp/trivy-gate-results/<< parameters.image_name >>-gate-trivy-results.json
+          destination: trivy-gate/<< parameters.image_name >>-gate-trivy-results.json
+      - store_artifacts:
+          path: /tmp/trivy-gate-results/<< parameters.image_name >>-gate-trivy-results.txt
+          destination: trivy-gate/<< parameters.image_name >>-gate-trivy-results.txt
       # Report-only MEDIUM/LOW/UNKNOWN visibility pass over the SAME already
       # built/scanned image (no rebuild, no second pull). Widens severity and
       # drops ignore-unfixed so drift that the CRITICAL/HIGH gate above
       # intentionally hides is still visible in the Tests tab; fail-on-findings
       # stays false so it never blocks the nightly workflow -- the gate above
-      # remains the sole blocking scan.
+      # remains the sole blocking scan. Its own trivy-results.json/.txt land at
+      # the orb's fixed default destinations, now safe to overwrite since the
+      # gate's copy was preserved above.
       - trivy-scan/scan:
           image-ref: arangodb/<< parameters.image_name >>
           severity: "CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN"
