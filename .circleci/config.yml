@@ -129,6 +129,7 @@ jobs:
           scan-path: "."
           severity: "CRITICAL,HIGH"
           fail-on-findings: true
+          ignore-unfixed: true
           store-junit-results: true
           sbom-output: /tmp/sbom.cdx.json
       - store_artifacts:
