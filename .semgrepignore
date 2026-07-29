@@ -1,0 +1,29 @@
+# SAST scope for this repository (Semgrep CE, via the semgrep-scan orb).
+#
+# Deliberately NOT excluded: tests/, testprojects/ and every other test tree.
+# Semgrep's built-in ignore list drops test code, and test code here runs in CI
+# with real repository credentials, so it stays in scope. The set below is
+# pinned by the disposition-check job (semgrepignore-baseline): adding an entry
+# fails the build until the baseline is updated in a reviewed change.
+
+# Dependencies, VCS metadata and build output: not first-party code.
+.git/
+node_modules/
+__pycache__/
+.venv/
+venv/
+target/
+dist/
+build/
+
+# Helm chart TEMPLATE, not a chart: `version: {VERSION}` and `{SERVICE_NAME}`
+# are placeholders servicemaker substitutes when it generates a service chart,
+# so these files are not parseable YAML and semgrep reports a syntax error for
+# each one. Excluded because they can never be analysed, not to hide findings.
+charts/templates/
+
+# Semgrep's bash parser fails on the `${ARCHIVE_FILE:-<not set>}` default value
+# on line 13 (a partial parse, so the rest of the file is analysed with no
+# error reported). Excluded rather than left as a permanent strict-mode failure;
+# revisit when semgrep's bash parser handles the construct.
+baseimages/scripts/entrypoint.sh

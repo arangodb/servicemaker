@@ -1,0 +1,63 @@
+# Structured accepted-risk waivers for the Trivy gates.
+# Schema and validation live in arangodb/trivy-scan (validate-waivers); this file
+# is passed as `waivers-path` to the gating scans and to disposition-check.
+#
+# WHY NOT .trivyignore
+# A .trivyignore entry is a bare rule ID, so one line waives that finding for
+# every target in the repository, now and in future, with no record of who
+# accepted the risk. Here every entry carries a package or path scope, a
+# severity, a detection date, an expiry inside that severity's window, a reason
+# and an approved-by that must resolve to a CODEOWNERS entry. Anything
+# malformed, undated, expired or over-window fails the job BEFORE the scan runs.
+#
+# WAIVERS ARE SUBTRACTED AT GATE TIME ONLY. They are never passed to trivy as
+# --ignorefile, so the published JSON report, table, JUnit and SBOM keep every
+# finding and the job log states which waivers were applied, by whom and why. An
+# ignorefile prunes the evidence as well as the gate, which is how a waived
+# finding becomes an invisible finding.
+#
+# WINDOWS: critical 30, high 30, medium 90, low 180, design-acceptance 366, KEV
+# 90 days from `detected` (the waiver-windows parameter in .circleci/config.yml
+# and the POA&M table in SECURITY.md). A waiver cannot cure an SLA breach: a
+# finding already past its window has no valid expiry left and the entry is
+# rejected. That is deliberate.
+#
+# FORMAT: a strict YAML subset, one `key: value` per line, `paths:` as a block or
+# inline list, unknown keys rejected. Block scalars are not supported, so
+# `reason:` is one line. Do not reformat this file with a YAML pretty-printer.
+
+waivers:
+  # --- CVE remediation (bounded POA&M, not a design acceptance) --------------
+  # brace-expansion 2.1.2 is bundled INSIDE npm's own dependency tree in the
+  # node:22 layer of arangodb/node22base (/usr/lib/node_modules/npm/node_modules/
+  # brace-expansion), and therefore also in arangodb/test-service-nodejs, which
+  # is built FROM it. The image already carries a patch step that replaces npm's
+  # bundled copies of sigstore, tar and brace-expansion from the registry, and
+  # that step is how 2.1.2 got there in the first place (CVE-2026-13149).
+  #
+  # There is no in-range fix. GHSA-mh99-v99m-4gvg models a single vulnerable
+  # range, "<= 5.0.7", first patched in 5.0.8, so no 2.x release clears it, and
+  # npm's bundled minimatch declares brace-expansion ^2.0.1 (minimatch 10.2.5 is
+  # the first release to accept ^5.0.5). Swapping in 5.0.8 under a minimatch that
+  # requires ^2 would break npm itself inside the image.
+  #
+  # Impact is denial of service (unbounded expansion, OOM crash) reachable only
+  # by whoever controls the glob pattern npm is asked to expand, which in these
+  # images is the image build and the service's own package manifest, not
+  # request-path input.
+  #
+  # EXIT CRITERION, not a renewal: node ships an npm bundle carrying minimatch
+  # >= 10.2.5, or the patch step in baseimages/Dockerfile.node22base replaces
+  # minimatch and brace-expansion together and the images are rebuilt and
+  # re-pushed. Until a rebuild happens, the already-published Docker Hub tags
+  # keep the finding, which is why this waiver also covers the two test-service
+  # images the scans read from the registry.
+  - id: CVE-2026-14257
+    kind: vulnerability
+    class: remediation-pending
+    package: brace-expansion
+    severity: HIGH
+    detected: 2026-07-29
+    expires: 2026-08-28
+    reason: "GHSA-mh99-v99m-4gvg, DoS only, first fixed in 5.0.8 which npm's bundled minimatch (^2.0.1 until minimatch 10.2.5) does not accept, so there is no in-range fix inside the npm bundle shipped in the node:22 layer; exit criterion is an upstream npm bundle carrying minimatch >= 10.2.5 or a paired minimatch plus brace-expansion patch in Dockerfile.node22base"
+    approved-by: "@MarkusReadius"

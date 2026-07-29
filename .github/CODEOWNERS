@@ -1,0 +1,27 @@
+# Security-GATE configuration files: changes here auto-request review from the
+# security owner (visibility, not blocking - require_code_owner_review is
+# deliberately OFF, and this repository has no ruleset requiring review at all
+# yet; GitHub does not count a PR author's own approval, so a sole owner would
+# deadlock their own security PRs).
+#
+# This file is also what makes `approved-by` in .circleci/security-waivers.yaml
+# mean something: validate-waivers requires every approver to appear here.
+#
+# Deliberately NOT owned: the base-image Dockerfiles and the chart template. The
+# gates guard those (misconfig-scan catches hardening regressions, the image
+# gates catch package regressions), and owning them would route every dependency
+# bump here as noise.
+/.circleci/          @MarkusReadius
+/.github/            @MarkusReadius
+/.trivyignore*       @MarkusReadius
+# The trivy secret-scanner config lives under /.circleci/ (owned above); this
+# pattern catches a copy landing at the repo root, which is where the orb's own
+# default parameter value points.
+/trivy-secret.yaml   @MarkusReadius
+# Posture scorecard: a security record.
+/.security/          @MarkusReadius
+# Scan-scope control files: shrinking SAST scope (.semgrepignore) or un-ignoring
+# a path (.gitignore) must surface to the security owner.
+/.semgrepignore      @MarkusReadius
+/.gitignore          @MarkusReadius
+/SECURITY.md         @MarkusReadius
