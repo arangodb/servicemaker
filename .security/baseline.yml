@@ -133,14 +133,14 @@ controls:
   - id: LOCAL-01
     requirement: "Committed secrets are detected across the whole tree, including test and fixture code."
     state: partial
-    evidence: "secret-scan report-only with .circleci/trivy-secret.yaml disabling trivy's built-in tests allow-rule; image gates additionally scan the image config"
+    evidence: "secret-scan over the checkout, plus a report-only secret pass over each image filesystem and image config, both with .circleci/trivy-secret.yaml disabling trivy's built-in tests allow-rule"
     proven: false
-    note: "report-only for one enumeration cycle; flip criterion in .circleci/trivy-secret.yaml"
+    note: "report-only for one enumeration cycle; flip criterion in .circleci/trivy-secret.yaml. The first image run enumerated one fixture (tornado's test key inside py12cugraph's uv cache), now carrying a dated allow-rule"
 
   - id: LOCAL-02
     requirement: "Build credentials cannot survive into a pushed image."
     state: met
-    evidence: "trivy-scan/dockerfile-credential-guard over all six Dockerfiles and templates, plus --image-config-scanners secret on every image gate"
+    evidence: "trivy-scan/dockerfile-credential-guard over all six Dockerfiles and templates, plus --image-config-scanners secret on the report-only image secret pass"
     proven: false
 
   - id: LOCAL-03

@@ -52,15 +52,22 @@ and a report that nobody can read is not evidence.
 | `sast-scan` | first-party code, `p/default` and `p/rust` | ERROR |
 | `sast-scan-diff` | findings not present on `main` | WARNING |
 | `disposition-check` | waiver and disposition integrity | any undated, expired, over-window or unattributed acceptance |
-| six image gates | the four base images and the two reference services | fixable CRITICAL, HIGH, plus image-config secrets and an EOL base OS |
+| six image gates | the four base images and the two reference services | fixable CRITICAL, HIGH (`scanners: vuln`), plus an end-of-life base OS |
 
 **Report tier (annotates, never fails)**
 
 - The full severity band (`CRITICAL` through `UNKNOWN`, unfixed included) is
   written to the JSON, table, JUnit and SBOM of every blocking scan through
   `report-severity`, so there is always evidence of what the gate did not count.
-- `secret-scan`, report-only for one enumeration cycle (see the flip criterion in
-  `.circleci/trivy-secret.yaml`).
+- `secret-scan` over the checkout, report-only for one enumeration cycle (see the
+  flip criterion in `.circleci/trivy-secret.yaml`).
+- A secret pass over each image filesystem and image config, report-only for the
+  same reason and with the same flip criterion. Trivy's default scanner set for
+  an image includes secret detection, so a `scanners: vuln` gate plus a separate
+  report-only secret pass is what keeps a third-party fixture from failing a
+  vulnerability gate. One such fixture is known and allow-ruled: tornado's test
+  key, which ships inside `py12cugraph` because the uv archive cache is left in
+  the image.
 - `dependency-cve-scan-nightly`: full band, unfixed included, `--include-dev-deps`.
 - `misconfig-scan-nightly`: widened to MEDIUM.
 - KEV and EPSS correlation on every image gate: CISA BOD 26-04 moved the federal
@@ -137,6 +144,11 @@ owner list rather than shipped half-done here.
 - **`Dockerfile.nodejs.template` needed a file pattern.** Trivy's dockerfile
   analyzer does not recognise that filename (measured on v0.72.0), so the Node.js
   service template was silently unscanned until `file-patterns` was set.
+- **The uv archive cache ships inside the images.** `prepareuv.sh` leaves
+  `/home/user/.cache/uv/archive-v0/` in the built image, which is why a
+  third-party test fixture key is present in `py12cugraph` at all. Dropping the
+  cache would shrink the images and remove the fixture; it is a change to
+  `prepareuv.sh` and is on the owner list.
 - **The published Docker Hub tags lag the gates.** The image jobs on a PR scan
   images built from that PR's Dockerfiles. What is on Docker Hub only changes
   when someone runs the `rebuild_base_images` pipeline, so a finding cleared here

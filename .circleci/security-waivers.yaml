@@ -28,18 +28,27 @@
 
 waivers:
   # --- CVE remediation (bounded POA&M, not a design acceptance) --------------
-  # brace-expansion 2.1.2 is bundled INSIDE npm's own dependency tree in the
-  # node:22 layer of arangodb/node22base (/usr/lib/node_modules/npm/node_modules/
-  # brace-expansion), and therefore also in arangodb/test-service-nodejs, which
-  # is built FROM it. The image already carries a patch step that replaces npm's
-  # bundled copies of sigstore, tar and brace-expansion from the registry, and
-  # that step is how 2.1.2 got there in the first place (CVE-2026-13149).
+  # brace-expansion 2.1.2 appears TWICE in arangodb/node22base, and therefore
+  # also in arangodb/test-service-nodejs, which is built FROM it (observed in
+  # build 1107):
+  #   1. /usr/lib/node_modules/npm/node_modules/brace-expansion, bundled inside
+  #      npm's own dependency tree in the node:22 layer.
+  #   2. /home/user/node_modules/brace-expansion, from the image's own global
+  #      install, pinned by `npm pkg set overrides.brace-expansion=2.1.2` in
+  #      baseimages/Dockerfile.node22base.
+  # Both were put at 2.1.2 deliberately, by the patch step and the override that
+  # cleared CVE-2026-13149.
   #
-  # There is no in-range fix. GHSA-mh99-v99m-4gvg models a single vulnerable
-  # range, "<= 5.0.7", first patched in 5.0.8, so no 2.x release clears it, and
-  # npm's bundled minimatch declares brace-expansion ^2.0.1 (minimatch 10.2.5 is
-  # the first release to accept ^5.0.5). Swapping in 5.0.8 under a minimatch that
-  # requires ^2 would break npm itself inside the image.
+  # GHSA-mh99-v99m-4gvg models a single vulnerable range, "<= 5.0.7", first
+  # patched in 5.0.8, so no 2.x release clears either copy.
+  #
+  # Copy 1 has no in-range fix at all: npm's bundled minimatch declares
+  # brace-expansion ^2.0.1 (minimatch 10.2.5 is the first release to accept
+  # ^5.0.5), so swapping 5.0.8 in under it would break npm inside the image.
+  # Copy 2 is potentially fixable by moving the override to 5.0.8, which is a
+  # major bump (ESM-first dual package, engines node 20 or >= 22) against the
+  # image's global install and needs a rebuild plus a smoke test, so it is
+  # tracked as the near-term action rather than done blind in a CI change.
   #
   # Impact is denial of service (unbounded expansion, OOM crash) reachable only
   # by whoever controls the glob pattern npm is asked to expand, which in these

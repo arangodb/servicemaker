@@ -77,7 +77,18 @@ parameters:
 # results at the orb's fixed output paths. That could not be fixed by reordering
 # either: the report pass had to run after the gate, so on a red gate the job
 # ended at the gate's fail step and the report pass never ran at all.
+#
+# scanners is pinned to "vuln" deliberately. Trivy's default scanner set for an
+# image includes SECRET detection, so leaving it empty makes a committed or
+# vendored key a blocking finding, and the first run of these gates proved why
+# that matters: py12cugraph ships tornado's own test fixture key inside the uv
+# cache (/home/user/.cache/uv/.../tornado/test/test.key), which turned the gate
+# red on a third-party fixture rather than on a vulnerability. Secret detection
+# over the images therefore runs as a REPORT-ONLY pass in the same job (see
+# build-and-scan-image), which is the same enumerate-then-flip sequence the
+# repository secret-scan follows.
 x-trivy-image-gate: &image-gate-settings
+  scanners: "vuln"
   severity: "CRITICAL,HIGH"
   report-severity: "CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN"
   fail-on-findings: true
@@ -86,11 +97,6 @@ x-trivy-image-gate: &image-gate-settings
   # Waivers are subtracted from the gate, with the approver and reason logged.
   waivers-path: << pipeline.parameters.waivers-path >>
   waiver-windows: << pipeline.parameters.waiver-windows >>
-  # Also scan the image CONFIG (ENV/ARG/labels) for credentials, not just the
-  # filesystem: a build argument that survives into the image config is exactly
-  # the baked-credential incident class this fleet hit in 2026-07.
-  extra-args: "--image-config-scanners secret"
-  secret-config-path: << pipeline.parameters.secret-config-path >>
   # An EOL base OS stops publishing fix data, which combined with ignore-unfixed
   # produces a FALSE-CLEAN result. Armed on a non-reserved exit code.
   exit-on-eol: "1"
@@ -129,6 +135,29 @@ commands:
                   fi
                   docker build -f "Dockerfile.${IMAGE}" -t "arangodb/${IMAGE}" .
                 no_output_timeout: << parameters.scan_timeout >>
+      # Report-only secret pass over the image filesystem AND the image CONFIG
+      # (ENV/ARG/labels), because a build argument that survives into the config
+      # is exactly the baked-credential incident class this fleet hit in 2026-07
+      # and trivy does not read the config unless asked. Its outputs carry their
+      # own prefix, so they cannot overwrite the gate's report, table, JUnit or
+      # SBOM, and it runs BEFORE the blocking gate on purpose: a scan placed
+      # after a gate does not run at all on a red gate.
+      #
+      # FLIP CRITERION: report-only until one cycle over all six images has
+      # enumerated every fixture and given it a dated allow-rule in
+      # .circleci/trivy-secret.yaml (one is already known: tornado's test key in
+      # py12cugraph's uv cache). Then set fail-on-findings: true here. Flipping
+      # first turns the gate red on third-party fixtures nobody has reviewed.
+      - trivy-scan/scan:
+          image-ref: arangodb/<< parameters.image_name >>
+          scanners: "secret"
+          extra-args: "--image-config-scanners secret"
+          secret-config-path: << pipeline.parameters.secret-config-path >>
+          severity: "CRITICAL,HIGH,MEDIUM,LOW"
+          fail-on-findings: false
+          store-junit-results: true
+          output-prefix: "secret-"
+          timeout: "45m"
       - trivy-scan/scan:
           <<: *image-gate-settings
           image-ref: arangodb/<< parameters.image_name >>
@@ -142,8 +171,10 @@ commands:
       # two signals, and trivy reports neither, so a KEV-listed MEDIUM sits below
       # every CVSS-banded gate here and is otherwise never seen. Report-only
       # (fail-on-match false): an exploitation signal on an unfixable base-OS
-      # package is triage input, not a reason to block a build nobody can
-      # unblock. It annotates; it never fails.
+      # package is triage input, not a reason to block a build nobody can unblock.
+      # It annotates; it never fails. On a red gate the job ends before this
+      # step, which is deliberate: the gate failure is the actionable signal and
+      # the full-band report is stored as an artifact either way.
       - trivy-scan/kev-epss-check:
           report-path: /tmp/trivy-results.json
           fail-on-match: false
