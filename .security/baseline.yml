@@ -1,0 +1,172 @@
+# OSPS Baseline scorecard for arangodb/servicemaker
+#
+# WHY THIS FILE EXISTS
+# Security posture was previously prose in PR descriptions. Prose does not
+# aggregate across a fleet and cannot show a trend. This is the machine-readable
+# per-repo scorecard: one row per control, with its state, the evidence that state
+# rests on, and whether the control has been PROVEN to fire rather than merely
+# configured.
+#
+# WHY OSPS BASELINE AND NOT OPENSSF SCORECARD
+# OpenSSF Scorecard detects eleven of its checks only through GitHub Actions
+# workflows, so a well-secured CircleCI repository scores badly and any
+# improvement is invisible. OSPS Baseline is CI-agnostic and already mapped to the
+# EU CRA and NIST SSDF.
+#
+# HONESTY ABOUT THE IDS. The OSPS-<CATEGORY>-<NN> ids were transcribed by hand and
+# are NOT reconciled against a pinned machine-readable catalogue export. Read
+# `requirement` as the authoritative statement and the id as a pointer. Controls
+# with no Baseline equivalent carry a LOCAL-* id and no target-level; consumers
+# must tolerate both.
+#
+# STATE VOCABULARY
+#   met            implemented AND the evidence has been observed
+#   met-unproven   implemented and reviewed, never observed firing
+#   partial        implemented for part of the scope, remainder named
+#   blocked        implementable only by an org/platform owner (see blocked-on)
+#   accepted-gap   deliberately not implemented
+
+catalogue: OSPS Baseline v2026.02.19
+repo: arangodb/servicemaker
+target-level: 2
+owner: "@MarkusReadius"
+assessed: 2026-07-29
+assessed-against: ci/trivy-scan-0.1.0
+
+controls:
+
+  # --- Access control -------------------------------------------------------
+  - id: OSPS-AC-01
+    requirement: "Version control requires multi-factor authentication for write access."
+    target-level: 1
+    state: met
+    evidence: "org-enforced 2FA on arangodb"
+    proven: true
+
+  - id: OSPS-AC-02
+    requirement: "The default branch cannot be force-pushed or deleted."
+    target-level: 1
+    state: partial
+    evidence: "enterprise-sourced stable-branch-no-force-push (19814963) and stable-branch-no-delete (19814975); main has no branch protection and no review requirement"
+    proven: true
+
+  - id: OSPS-AC-03
+    requirement: "Merges to the default branch require the automated checks that gate the release to pass."
+    target-level: 2
+    state: blocked
+    evidence: ".github/required-checks.txt lists the 12 contexts; no ruleset requires any of them, so the gates block pipeline progression only"
+    blocked-on: "repository owner: create a ruleset on main with the committed contexts, then flip required-checks-drift to blocking"
+    proven: false
+
+  # --- Build and release ----------------------------------------------------
+  - id: OSPS-BR-01
+    requirement: "Released artifacts are built from a reviewed, version-controlled definition."
+    target-level: 1
+    state: met
+    evidence: "baseimages/Dockerfile.* plus baseimages/build.sh, all in-repo; the rebuild pipeline is the only publish path"
+    proven: true
+
+  - id: OSPS-BR-03
+    requirement: "The release pipeline runs the project's security gates before publishing."
+    target-level: 2
+    state: met-unproven
+    evidence: "rebuild-base-images requires dependency-cve-scan-rebuild, misconfig-scan-rebuild and disposition-check-rebuild, and the four image gates run between make build and make push"
+    proven: false
+    note: "requires: edges added in this change; the rebuild pipeline is triggered manually, so it has not run since"
+
+  - id: OSPS-BR-05
+    requirement: "Released artifacts are cryptographically signed or otherwise verifiable by consumers."
+    target-level: 2
+    state: accepted-gap
+    evidence: "no signature or attestation on any pushed digest; SBOMs exist as CircleCI job artifacts only"
+    blocked-on: "org Rekor publicity decision plus a baseimages/push.sh change to capture per-image digests"
+    proven: false
+
+  # --- Quality and vulnerability management ---------------------------------
+  - id: OSPS-QA-02
+    requirement: "Dependencies are pinned by a committed lockfile per ecosystem."
+    target-level: 2
+    state: partial
+    evidence: "Cargo.lock and arango-test-service-nodejs/package-lock.json committed; arango-test-service/requirements.txt added in this change; testprojects/ fixtures carry manifests without lockfiles by design"
+    proven: true
+
+  - id: OSPS-VM-01
+    requirement: "A documented private channel exists for vulnerability reports."
+    target-level: 1
+    state: met
+    evidence: "SECURITY.md: GitHub private vulnerability reporting plus security@arangodb.com"
+    proven: false
+    note: "private vulnerability reporting must be enabled in repository settings (owner action, zero cost)"
+
+  - id: OSPS-VM-02
+    requirement: "Dependency vulnerabilities are detected automatically on every change."
+    target-level: 2
+    state: met
+    evidence: "dependency-cve-scan on every pipeline, 3 named targets asserted with expect-targets, 143 SBOM components"
+    proven: true
+    note: "gate configuration proven by nightly-self-test against a pinned known-vulnerable fixture"
+
+  - id: OSPS-VM-03
+    requirement: "Published artifacts are rescanned on a schedule, not only at build time."
+    target-level: 2
+    state: met
+    evidence: "the Daily scheduled pipeline rebuilds and scans all six images nightly; the 2026-07-29 run correctly went red on CVE-2026-14257 in node22base and test-service-nodejs"
+    proven: true
+    note: "cadence lives in CircleCI UI state, not in the repository; migration to a committed cron is on the owner list"
+
+  - id: OSPS-VM-04
+    requirement: "Accepted risks are documented, scoped, attributed and expire."
+    target-level: 2
+    state: met
+    evidence: ".circleci/security-waivers.yaml with one HIGH remediation-pending entry; validate-waivers plus disposition-check are blocking and resolve approved-by against .github/CODEOWNERS"
+    proven: false
+    note: "proven once disposition-check has failed once on a deliberately expired entry"
+
+  - id: OSPS-VM-05
+    requirement: "Static analysis runs over first-party code on every change."
+    target-level: 2
+    state: met
+    evidence: "sast-scan (p/default + p/rust, ERROR) and sast-scan-diff (WARNING, baseline main); measured locally: 0 ERROR, 3 WARNING, 4 INFO over 62 files"
+    proven: true
+
+  # --- Local controls with no Baseline equivalent ----------------------------
+  - id: LOCAL-01
+    requirement: "Committed secrets are detected across the whole tree, including test and fixture code."
+    state: partial
+    evidence: "secret-scan report-only with .circleci/trivy-secret.yaml disabling trivy's built-in tests allow-rule; image gates additionally scan the image config"
+    proven: false
+    note: "report-only for one enumeration cycle; flip criterion in .circleci/trivy-secret.yaml"
+
+  - id: LOCAL-02
+    requirement: "Build credentials cannot survive into a pushed image."
+    state: met
+    evidence: "trivy-scan/dockerfile-credential-guard over all six Dockerfiles and templates, plus --image-config-scanners secret on every image gate"
+    proven: false
+
+  - id: LOCAL-03
+    requirement: "The scanners themselves are proven to still detect."
+    state: met-unproven
+    evidence: "nightly-self-test scans a digest-pinned python:3.9-slim and fails below a floor of 5 fixable CRITICAL/HIGH ids"
+    proven: false
+    note: "added in this change; proven after the first nightly"
+
+  - id: LOCAL-04
+    requirement: "Scan coverage cannot silently shrink."
+    state: met
+    evidence: "expect-targets names the three dependency manifests; require-targets on the fs and SAST scans; semgrepignore-baseline pins the SAST exclusion set from both directions; validate-sbom floors the component count"
+    proven: true
+    note: "the file-patterns fix for Dockerfile.nodejs.template came out of exactly this class of silent miss"
+
+  - id: LOCAL-05
+    requirement: "Image scans do not depend on configuration outside the repository."
+    state: met
+    evidence: "the six image gates moved into the default workflow; before this change the only workflow containing them was conditioned on a pipeline parameter defaulting to false"
+    proven: false
+    note: "the fleet audit recorded this as one of four execution bugs where coverage was believed to exist and did not"
+
+accepted-gaps:
+  - id: OSPS-BR-05
+    reason: "signing needs an org decision on Rekor publicity and a push-script change; a disabled signing chain would be a stub"
+  - id: LOCAL-06
+    requirement: "Rendered service charts are hardened (seccompProfile, readOnlyRootFilesystem, dropped capabilities)."
+    reason: "template work in charts/templates/ that changes every generated service; deliberately not bundled into a scanning change. A NetworkPolicy is not proposed at all: a chart installed by the platform operator may only contain kinds the arango-operator ServiceAccount can read."
