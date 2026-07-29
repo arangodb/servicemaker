@@ -3,4 +3,11 @@ FROM arangodb/py12base
 RUN /scripts/prepareuv.sh python-arango phenolrs \
     torch torch-geometric torchaudio torchvideo
 
+# Inherited from arangodb/py12base, which already ends on `USER user`, and
+# restated here because Trivy's Dockerfile analyzer cannot see the parent image's
+# USER (the parent is built separately) and reports DS-0002 "specify at least 1
+# USER command" as a HIGH against this file. A no-op at build time, and the
+# other layered base image (py12cugraph) already states its user explicitly.
+USER user
+
 CMD [ "/scripts/entrypoint.sh" ]
