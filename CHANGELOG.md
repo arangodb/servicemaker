@@ -32,10 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `sigstore` override to the Node.js test service `package.json`
 - Upgraded `axios` to 1.18.0 in the Node.js base image (GHSA-gcfj-64vw-6mp9)
 - Bumped `tar` override to 7.5.19 (CVE-2026-59873, CVE-2026-59874)
-- Added `brace-expansion` override to 2.1.2 (CVE-2026-13149)
-- Patched npm's bundled `tar` and `brace-expansion` in the Node.js 22 base image (full-image Trivy scans)
-- Dispositioned CVE-2026-14257 (`brace-expansion`, HIGH, denial of service) with a dated waiver expiring 2026-08-28. It appears twice in `node22base`, and therefore in `test-service-nodejs` too: inside npm's own bundled dependency tree in the `node:22` layer, and in `/home/user/node_modules` from the image's own global install, where `overrides.brace-expansion=2.1.2` pins it. GHSA-mh99-v99m-4gvg models one vulnerable range, `<= 5.0.7`, first fixed in 5.0.8, and npm's bundled `minimatch` declares `brace-expansion` `^2.0.1` (10.2.5 is the first release to accept `^5.0.5`), so no 2.x release clears either copy and the bundled one cannot move at all until upstream npm ships `minimatch` 10.2.5. Moving the override to 5.0.8 for the global install is the near-term action; it is a major bump against the image and needs a rebuild plus a smoke test. The 2026-07-29 nightly went red on this finding.
-- Added `tar` and `brace-expansion` overrides to the Node.js test service `package.json`
+- Upgraded npm to 12.0.1 in the Node.js base image so bundled deps use `brace-expansion@5.0.8` (CVE-2026-13149, CVE-2026-14257)
+- Pinned `brace-expansion@5.0.8` and `minimatch@10.2.5` overrides (minimatch 3.x is incompatible with brace-expansion 5.x)
+- Patched npm's bundled `tar`, `brace-expansion`, and `picomatch` in the Node.js 22 base image
+- Added security overrides (`tar`, `brace-expansion`, `minimatch`, `path-to-regexp`, `body-parser`, `sigstore`) to the Node.js test service `package.json`
 
 ## [1.1.0] - 2026-06-24
 

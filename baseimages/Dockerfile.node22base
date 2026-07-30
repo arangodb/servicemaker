@@ -11,15 +11,16 @@ RUN apt-get update && \
     && /scripts/debinstall.sh \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Node.js 22, then upgrade npm so bundled deps (brace-expansion, tar, minimatch)
+# are versions compatible with current security fixes (npm 12 uses brace-expansion ^5.0.8).
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y --no-install-recommends nodejs && \
+    npm install -g npm@12.0.1 && \
     npm cache clean --force && \
     apt-get upgrade -y && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Patch npm's bundled dependencies without self-upgrading npm.
-# Trivy full-image scans include /usr/lib/node_modules/npm/node_modules, so
-# overrides on /home/user/package.json alone do not clear those findings.
+# Patch remaining vulnerable npm-bundled packages for full-image Trivy scans.
 RUN NPM_MODULES=/usr/lib/node_modules/npm/node_modules \
     && rm -rf "${NPM_MODULES}/picomatch" \
     && mkdir -p /tmp/picomatch \
@@ -33,7 +34,7 @@ RUN NPM_MODULES=/usr/lib/node_modules/npm/node_modules \
     && npm install \
         sigstore@4.1.1 \
         tar@7.5.19 \
-        brace-expansion@2.1.2 \
+        brace-expansion@5.0.8 \
         --omit=dev --no-package-lock \
     && rm -rf "${NPM_MODULES}/sigstore" "${NPM_MODULES}/@sigstore" \
     && cp -r node_modules/sigstore "${NPM_MODULES}/" \
@@ -60,10 +61,12 @@ USER user
 
 RUN npm init -y
 
-# Apply security overrides to fix vulnerabilities
+# Security overrides for project node_modules.
+# minimatch@10.2.5 is required with brace-expansion@5.0.8 (minimatch@3 expects the 2.x API).
 RUN npm pkg set "overrides.path-to-regexp=0.1.13" && \
     npm pkg set "overrides.tar=7.5.19" && \
-    npm pkg set "overrides.brace-expansion=2.1.2" && \
+    npm pkg set "overrides.brace-expansion=5.0.8" && \
+    npm pkg set "overrides.minimatch=10.2.5" && \
     npm pkg set "overrides.body-parser=1.20.3" && \
     npm pkg set "overrides.form-data=4.0.6" && \
     npm pkg set "overrides.sigstore=4.1.1"
