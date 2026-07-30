@@ -28,39 +28,32 @@
 
 waivers:
   # --- CVE remediation (bounded POA&M, not a design acceptance) --------------
-  # brace-expansion 2.1.2 appears TWICE in arangodb/node22base, and therefore
-  # also in arangodb/test-service-nodejs, which is built FROM it (observed in
-  # build 1107):
-  #   1. /usr/lib/node_modules/npm/node_modules/brace-expansion, bundled inside
-  #      npm's own dependency tree in the node:22 layer.
-  #   2. /home/user/node_modules/brace-expansion, from the image's own global
-  #      install, pinned by `npm pkg set overrides.brace-expansion=2.1.2` in
-  #      baseimages/Dockerfile.node22base.
-  # Both were put at 2.1.2 deliberately, by the patch step and the override that
-  # cleared CVE-2026-13149.
+  # brace-expansion appeared TWICE in arangodb/node22base, and therefore also
+  # in arangodb/test-service-nodejs, which is built FROM it (observed in build
+  # 1107): inside npm's own bundled dependency tree in the node:22 layer, and
+  # in /home/user/node_modules from the image's own global install.
   #
   # GHSA-mh99-v99m-4gvg models a single vulnerable range, "<= 5.0.7", first
-  # patched in 5.0.8, so no 2.x release clears either copy.
+  # patched in 5.0.8.
   #
-  # Copy 1 has no in-range fix at all: npm's bundled minimatch declares
-  # brace-expansion ^2.0.1 (minimatch 10.2.5 is the first release to accept
-  # ^5.0.5), so swapping 5.0.8 in under it would break npm inside the image.
-  # Copy 2 is potentially fixable by moving the override to 5.0.8, which is a
-  # major bump (ESM-first dual package, engines node 20 or >= 22) against the
-  # image's global install and needs a rebuild plus a smoke test, so it is
-  # tracked as the near-term action rather than done blind in a CI change.
+  # FIXED IN SOURCE by #23 (merged 2026-07-30): baseimages/Dockerfile.node22base
+  # moves npm to 12 and pins overrides.brace-expansion=5.0.8 together with
+  # overrides.minimatch=10.2.5, and the test-service package.json carries the
+  # same paired overrides. Images built from main scan clean.
+  #
+  # This waiver now covers ONLY the already-published Docker Hub tags, which
+  # keep the finding until images rebuilt from main are pushed and the
+  # registry-side scans (the nightly node22base and test-service jobs) confirm
+  # clean.
   #
   # Impact is denial of service (unbounded expansion, OOM crash) reachable only
   # by whoever controls the glob pattern npm is asked to expand, which in these
   # images is the image build and the service's own package manifest, not
   # request-path input.
   #
-  # EXIT CRITERION, not a renewal: node ships an npm bundle carrying minimatch
-  # >= 10.2.5, or the patch step in baseimages/Dockerfile.node22base replaces
-  # minimatch and brace-expansion together and the images are rebuilt and
-  # re-pushed. Until a rebuild happens, the already-published Docker Hub tags
-  # keep the finding, which is why this waiver also covers the two test-service
-  # images the scans read from the registry.
+  # EXIT CRITERION, not a renewal: a clean registry-side scan of the rebuilt
+  # tags. Then delete this file together with its waivers-path wiring in
+  # .circleci/config.yml; the orb rejects a waivers file with no entries.
   - id: CVE-2026-14257
     kind: vulnerability
     class: remediation-pending
@@ -68,5 +61,5 @@ waivers:
     severity: HIGH
     detected: 2026-07-29
     expires: 2026-08-28
-    reason: "GHSA-mh99-v99m-4gvg, DoS only, first fixed in 5.0.8 which npm's bundled minimatch (^2.0.1 until minimatch 10.2.5) does not accept, so there is no in-range fix inside the npm bundle shipped in the node:22 layer; exit criterion is an upstream npm bundle carrying minimatch >= 10.2.5 or a paired minimatch plus brace-expansion patch in Dockerfile.node22base"
+    reason: "GHSA-mh99-v99m-4gvg, DoS only, fixed in source by #23 (npm 12 plus paired overrides brace-expansion 5.0.8 and minimatch 10.2.5); retained solely for the already-published registry tags until images rebuilt from main are pushed and the registry-side scans confirm clean, then this file and its waivers-path wiring go away together"
     approved-by: "@MarkusReadius"

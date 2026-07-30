@@ -101,8 +101,9 @@ A waiver cannot cure a breach: a finding already past its window has no valid
 expiry date left, so the entry is rejected and the breach stays visible.
 
 Open acceptances live in `.circleci/security-waivers.yaml`. There is one today:
-`CVE-2026-14257` (brace-expansion, HIGH, DoS) bundled inside npm's own dependency
-tree in the `node:22` layer, with no in-range fix and a dated exit criterion.
+`CVE-2026-14257` (brace-expansion, HIGH, DoS), fixed in source by the paired
+overrides in the `node:22` base image (#23); the waiver covers only the
+already-published registry tags until rebuilt images land and scan clean.
 
 ## Required status checks
 
