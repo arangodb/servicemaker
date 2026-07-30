@@ -6,7 +6,7 @@ version: 2.1
 # zero review. Bumps are a reviewed one-line change here.
 orbs:
   slack: circleci/slack@5.1.1
-  trivy-scan: arangodb/trivy-scan@1.1.2
+  trivy-scan: arangodb/trivy-scan@1.2.0
   semgrep-scan: arangodb/semgrep-scan@1.0.0
   supply-chain: arangodb/supply-chain@1.0.0
 
@@ -39,7 +39,7 @@ parameters:
   # section of SECURITY.md.
   waiver-windows:
     type: string
-    default: "critical=30,high=30,medium=90,low=180,design=366,kev=90"
+    default: "critical=30,high=30,medium=90,low=180,design=366,kev=14"
   # Trivy secret-scanner config: re-enables detection inside test trees, which
   # trivy's built-in allow-rules exclude entirely.
   secret-config-path:
