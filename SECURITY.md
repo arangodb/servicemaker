@@ -70,8 +70,9 @@ and a report that nobody can read is not evidence.
   the image.
 - `dependency-cve-scan-nightly`: full band, unfixed included, `--include-dev-deps`.
 - `misconfig-scan-nightly`: widened to MEDIUM.
-- KEV and EPSS correlation on every image gate: CISA BOD 26-04 moved the federal
-  baseline off flat CVSS onto exploitation signals, and Trivy reports neither, so
+- KEV and EPSS correlation on every image gate: CISA BOD 26-04 keys federal
+  remediation deadlines on exploitation evidence (KEV), not CVSS; EPSS is the
+  complementary likelihood signal, mandated by nothing. Trivy reports neither, so
   a KEV-listed MEDIUM would otherwise sit below every band here. It annotates and
   never fails, because an exploitation signal on an unfixable base-OS package is
   triage input, not a reason to block a build nobody can unblock.
