@@ -1,30 +1,15 @@
-# OSPS Baseline scorecard for arangodb/servicemaker
+# OSPS Baseline scorecard for arangodb/servicemaker: one row per control with
+# its state, the evidence behind it, and whether it has been PROVEN to fire.
 #
-# WHY THIS FILE EXISTS
-# Security posture was previously prose in PR descriptions. Prose does not
-# aggregate across a fleet and cannot show a trend. This is the machine-readable
-# per-repo scorecard: one row per control, with its state, the evidence that state
-# rests on, and whether the control has been PROVEN to fire rather than merely
-# configured.
+# OSPS rather than OpenSSF Scorecard: Scorecard detects eleven checks only
+# through GitHub Actions, so a CircleCI repo scores badly no matter what.
+# Ids follow the OSPS-CATEGORY-NN scheme, transcribed by hand rather than
+# reconciled against a pinned catalogue export, so `requirement` is the
+# authoritative statement and the id only a pointer.
 #
-# WHY OSPS BASELINE AND NOT OPENSSF SCORECARD
-# OpenSSF Scorecard detects eleven of its checks only through GitHub Actions
-# workflows, so a well-secured CircleCI repository scores badly and any
-# improvement is invisible. OSPS Baseline is CI-agnostic and already mapped to the
-# EU CRA and NIST SSDF.
-#
-# HONESTY ABOUT THE IDS. The OSPS-<CATEGORY>-<NN> ids were transcribed by hand and
-# are NOT reconciled against a pinned machine-readable catalogue export. Read
-# `requirement` as the authoritative statement and the id as a pointer. Controls
-# with no Baseline equivalent carry a LOCAL-* id and no target-level; consumers
-# must tolerate both.
-#
-# STATE VOCABULARY
-#   met            implemented AND the evidence has been observed
-#   met-unproven   implemented and reviewed, never observed firing
-#   partial        implemented for part of the scope, remainder named
-#   blocked        implementable only by an org/platform owner (see blocked-on)
-#   accepted-gap   deliberately not implemented
+# States: met (evidence observed), met-unproven (never observed firing), partial
+# (remainder named), blocked (needs an org owner, see blocked-on), accepted-gap.
+# LOCAL-* ids carry no target-level.
 
 catalogue: OSPS Baseline v2026.02.19
 repo: arangodb/servicemaker

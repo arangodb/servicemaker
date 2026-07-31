@@ -1,10 +1,8 @@
-# SAST scope for this repository (Semgrep CE, via the semgrep-scan orb).
-#
-# Deliberately NOT excluded: tests/, testprojects/ and every other test tree.
-# Semgrep's built-in ignore list drops test code, and test code here runs in CI
-# with real repository credentials, so it stays in scope. The set below is
-# pinned by the disposition-check job (semgrepignore-baseline): adding an entry
-# fails the build until the baseline is updated in a reviewed change.
+# SAST scope (Semgrep CE, via the semgrep-scan orb).
+# tests/ and testprojects/ are deliberately NOT excluded: Semgrep's built-in
+# list drops test code, and test code here runs in CI with real credentials.
+# The set below is pinned by disposition-check, so adding an entry fails the
+# build until the baseline is updated in a reviewed change.
 
 # Dependencies, VCS metadata and build output: not first-party code.
 .git/
@@ -16,14 +14,10 @@ target/
 dist/
 build/
 
-# Helm chart TEMPLATE, not a chart: `version: {VERSION}` and `{SERVICE_NAME}`
-# are placeholders servicemaker substitutes when it generates a service chart,
-# so these files are not parseable YAML and semgrep reports a syntax error for
-# each one. Excluded because they can never be analysed, not to hide findings.
+# A chart TEMPLATE: the {VERSION} and {SERVICE_NAME} placeholders make these
+# unparseable YAML, so semgrep can never analyse them.
 charts/templates/
 
-# Semgrep's bash parser fails on the `${ARCHIVE_FILE:-<not set>}` default value
-# on line 13 (a partial parse, so the rest of the file is analysed with no
-# error reported). Excluded rather than left as a permanent strict-mode failure;
-# revisit when semgrep's bash parser handles the construct.
+# Semgrep's bash parser fails on the `${ARCHIVE_FILE:-...}` default on line 13
+# and partial-parses the rest silently. Revisit when the parser handles it.
 baseimages/scripts/entrypoint.sh

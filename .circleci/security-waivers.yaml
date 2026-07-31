@@ -1,59 +1,25 @@
-# Structured accepted-risk waivers for the Trivy gates.
-# Schema and validation live in arangodb/trivy-scan (validate-waivers); this file
-# is passed as `waivers-path` to the gating scans and to disposition-check.
+# Accepted-risk waivers for the Trivy gates; schema and validation live in the
+# arangodb/trivy-scan orb (validate-waivers).
 #
-# WHY NOT .trivyignore
-# A .trivyignore entry is a bare rule ID, so one line waives that finding for
-# every target in the repository, now and in future, with no record of who
-# accepted the risk. Here every entry carries a package or path scope, a
-# severity, a detection date, an expiry inside that severity's window, a reason
-# and an approved-by that must resolve to a CODEOWNERS entry. Anything
-# malformed, undated, expired or over-window fails the job BEFORE the scan runs.
+# Replaces .trivyignore, whose entries are bare rule ids with no scope, no date
+# and nobody on record. Subtracted at GATE time only, never passed to trivy as
+# --ignorefile, so the published report keeps every finding.
 #
-# WAIVERS ARE SUBTRACTED AT GATE TIME ONLY. They are never passed to trivy as
-# --ignorefile, so the published JSON report, table, JUnit and SBOM keep every
-# finding and the job log states which waivers were applied, by whom and why. An
-# ignorefile prunes the evidence as well as the gate, which is how a waived
-# finding becomes an invisible finding.
+# Windows come from waiver-windows in .circleci/config.yml. A waiver cannot cure
+# an SLA breach: a finding past its window has no valid expiry left.
 #
-# WINDOWS: critical 30, high 30, medium 90, low 180, design-acceptance 366, KEV
-# 90 days from `detected` (the waiver-windows parameter in .circleci/config.yml
-# and the POA&M table in SECURITY.md). A waiver cannot cure an SLA breach: a
-# finding already past its window has no valid expiry left and the entry is
-# rejected. That is deliberate.
-#
-# FORMAT: a strict YAML subset, one `key: value` per line, `paths:` as a block or
-# inline list, unknown keys rejected. Block scalars are not supported, so
-# `reason:` is one line. Do not reformat this file with a YAML pretty-printer.
+# Strict YAML subset, one `key: value` per line, no block scalars, so `reason:`
+# is one line. Do not reformat with a YAML pretty-printer.
 
 waivers:
   # --- CVE remediation (bounded POA&M, not a design acceptance) --------------
-  # brace-expansion appeared TWICE in arangodb/node22base, and therefore also
-  # in arangodb/test-service-nodejs, which is built FROM it (observed in build
-  # 1107): inside npm's own bundled dependency tree in the node:22 layer, and
-  # in /home/user/node_modules from the image's own global install.
-  #
-  # GHSA-mh99-v99m-4gvg models a single vulnerable range, "<= 5.0.7", first
-  # patched in 5.0.8.
-  #
-  # FIXED IN SOURCE by #23 (merged 2026-07-30): baseimages/Dockerfile.node22base
-  # moves npm to 12 and pins overrides.brace-expansion=5.0.8 together with
-  # overrides.minimatch=10.2.5, and the test-service package.json carries the
-  # same paired overrides. Images built from main scan clean.
-  #
-  # This waiver now covers ONLY the already-published Docker Hub tags, which
-  # keep the finding until images rebuilt from main are pushed and the
-  # registry-side scans (the nightly node22base and test-service jobs) confirm
-  # clean.
-  #
-  # Impact is denial of service (unbounded expansion, OOM crash) reachable only
-  # by whoever controls the glob pattern npm is asked to expand, which in these
-  # images is the image build and the service's own package manifest, not
-  # request-path input.
-  #
+  # Fixed in source by #23 (npm 12 plus paired brace-expansion 5.0.8 and
+  # minimatch 10.2.5 overrides), so images built from main scan clean. This
+  # covers ONLY the already-published Docker Hub tags.
+  # DoS only, reachable by whoever controls the glob npm expands, which here is
+  # the image build and the service manifest, not request-path input.
   # EXIT CRITERION, not a renewal: a clean registry-side scan of the rebuilt
-  # tags. Then delete this file together with its waivers-path wiring in
-  # .circleci/config.yml; the orb rejects a waivers file with no entries.
+  # tags, then delete this file and its waivers-path wiring together.
   - id: CVE-2026-14257
     kind: vulnerability
     class: remediation-pending

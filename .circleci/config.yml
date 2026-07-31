@@ -1,9 +1,8 @@
 version: 2.1
 
-# EXACT ORB VERSIONS ONLY, no @1 / @1.0 / @volatile floats. CircleCI resolves a
-# float at config-compile time, so a future orb publish silently changes what
-# runs in a pipeline that pushes images to Docker Hub, with zero repo diff and
-# zero review. Bumps are a reviewed one-line change here.
+# Exact orb versions only: a float resolves at config-compile time, so an orb
+# publish changes what runs in a pipeline that pushes to Docker Hub, with no
+# repo diff. Bumps are a reviewed one-line change here.
 orbs:
   slack: circleci/slack@5.1.1
   trivy-scan: arangodb/trivy-scan@1.2.0
@@ -11,17 +10,9 @@ orbs:
   supply-chain: arangodb/supply-chain@1.0.0
 
 parameters:
-  # Runs the deep nightly variant (in-container dependency-tree scan of every
-  # image, comprehensive detection, the positive-control self-test and the Slack
-  # routing). Set by the "Daily" scheduled pipeline.
-  #
-  # IT NO LONGER GATES WHETHER IMAGES ARE SCANNED AT ALL. Until this change the
-  # only workflow containing an image scan was conditioned on this parameter,
-  # which defaults to false, so on every push, every PR, every API trigger and
-  # every branch other than the one the schedule names, nothing scanned the
-  # images this repository publishes. The image scans now run in the default
-  # workflow as well, so a Dockerfile change is scanned before it is merged and
-  # coverage no longer depends on a parameter set outside the repository.
+  # Selects the deep nightly variant; set by the "Daily" scheduled pipeline.
+  # It no longer gates whether images are scanned AT ALL: the only workflow
+  # with an image scan used to be conditioned on it, and it defaults to false.
   security_scan:
     type: boolean
     default: false
@@ -29,14 +20,12 @@ parameters:
     type: boolean
     default: false
 
-  # Structured accepted-risk waivers, subtracted at GATE time only (never passed
-  # to trivy as --ignorefile), so the published report, table, JUnit and SBOM
-  # keep every finding and only the gate verdict changes.
+  # Subtracted at GATE time only, never passed to trivy as --ignorefile, so the
+  # published report keeps every finding and only the verdict changes.
   waivers-path:
     type: string
     default: .circleci/security-waivers.yaml
-  # Maximum expires-minus-detected span per severity. Same table as the POA&M
-  # section of SECURITY.md.
+  # Max expires-minus-detected per severity; same table as SECURITY.md's POA&M.
   waiver-windows:
     type: string
     default: "critical=30,high=30,medium=90,low=180,design=366,kev=14"
@@ -45,12 +34,9 @@ parameters:
   secret-config-path:
     type: string
     default: .circleci/trivy-secret.yaml
-  # SAST scope, and the two guards over it. NOTE the two orbs read a parameter of
-  # this name with OPPOSITE polarity, which is why there are two of them:
+  # The two orbs read a parameter of this name with OPPOSITE polarity, hence two:
   #   semgrepignore-allowed  = the only entries .semgrepignore MAY contain
-  #                            (trivy-scan/disposition-check)
   #   sast-required-paths    = paths that must NOT be excluded from the scan
-  #                            (semgrep-scan/scan)
   semgrepignore-allowed:
     type: string
     default: ".git/ node_modules/ __pycache__/ .venv/ venv/ target/ dist/ build/ charts/templates/ baseimages/scripts/entrypoint.sh"
@@ -58,9 +44,8 @@ parameters:
     type: string
     default: "src/ arango-test-service/ arango-test-service-nodejs/ scripts/ testprojects/"
 
-  # Durable evidence export and Dependency-Track ingest. Both INERT while empty:
-  # the steps log why they did nothing and exit 0. No bucket and no
-  # Dependency-Track host exist yet (org owner action, recorded in SECURITY.md).
+  # Both inert while empty. No bucket and no Dependency-Track host exist yet;
+  # standing up either is an org owner action, recorded in SECURITY.md.
   evidence-bucket:
     type: string
     default: ""
@@ -69,24 +54,12 @@ parameters:
     default: ""
 
 # Shared settings for the BLOCKING image gates.
-#
-# Wide report, narrow gate, ONE scan: severity is the band the gate fails on,
-# report-severity the band written to the JSON, table, JUnit and SBOM. This
-# replaces the previous two-pass arrangement, where a second report-only
-# trivy-scan/scan invocation re-scanned the same image and overwrote the gate's
-# results at the orb's fixed output paths. That could not be fixed by reordering
-# either: the report pass had to run after the gate, so on a red gate the job
-# ended at the gate's fail step and the report pass never ran at all.
-#
-# scanners is pinned to "vuln" deliberately. Trivy's default scanner set for an
-# image includes SECRET detection, so leaving it empty makes a committed or
-# vendored key a blocking finding, and the first run of these gates proved why
-# that matters: py12cugraph ships tornado's own test fixture key inside the uv
-# cache (/home/user/.cache/uv/.../tornado/test/test.key), which turned the gate
-# red on a third-party fixture rather than on a vulnerability. Secret detection
-# over the images therefore runs as a REPORT-ONLY pass in the same job (see
-# build-and-scan-image), which is the same enumerate-then-flip sequence the
-# repository secret-scan follows.
+# Wide report, narrow gate, one scan: the previous two-pass arrangement had the
+# report-only invocation overwrite the gate's results at the orb's fixed output
+# paths, and reordering could not fix it.
+# scanners is pinned to "vuln": trivy's image default includes secret detection,
+# and py12cugraph ships tornado's own test fixture key in the uv cache, which
+# turned the gate red on a third-party fixture. That pass is report-only.
 x-trivy-image-gate: &image-gate-settings
   scanners: "vuln"
   severity: "CRITICAL,HIGH"
@@ -97,8 +70,8 @@ x-trivy-image-gate: &image-gate-settings
   # Waivers are subtracted from the gate, with the approver and reason logged.
   waivers-path: << pipeline.parameters.waivers-path >>
   waiver-windows: << pipeline.parameters.waiver-windows >>
-  # An EOL base OS stops publishing fix data, which combined with ignore-unfixed
-  # produces a FALSE-CLEAN result. Armed on a non-reserved exit code.
+  # An EOL base OS stops publishing fix data, which with ignore-unfixed reads
+  # as clean. Armed on a non-reserved exit code.
   exit-on-eol: "1"
   timeout: "45m"
 
@@ -111,10 +84,8 @@ commands:
       build_image:
         type: boolean
         default: true
-      # "comprehensive" raises recall at the cost of false positives. Set on the
-      # nightly instances only: the orb's own guidance is that it does not belong
-      # on a blocking PR gate, and the fleet calibration is that PR gates match
-      # the industry standard rather than exceed it.
+      # "comprehensive" raises recall at the cost of false positives, so it is
+      # set on the nightly instances only, not on a blocking PR gate.
       detection-priority:
         type: string
         default: ""
@@ -135,19 +106,12 @@ commands:
                   fi
                   docker build -f "Dockerfile.${IMAGE}" -t "arangodb/${IMAGE}" .
                 no_output_timeout: << parameters.scan_timeout >>
-      # Report-only secret pass over the image filesystem AND the image CONFIG
-      # (ENV/ARG/labels), because a build argument that survives into the config
-      # is exactly the baked-credential incident class this fleet hit in 2026-07
-      # and trivy does not read the config unless asked. Its outputs carry their
-      # own prefix, so they cannot overwrite the gate's report, table, JUnit or
-      # SBOM, and it runs BEFORE the blocking gate on purpose: a scan placed
-      # after a gate does not run at all on a red gate.
-      #
-      # FLIP CRITERION: report-only until one cycle over all six images has
-      # enumerated every fixture and given it a dated allow-rule in
-      # .circleci/trivy-secret.yaml (one is already known: tornado's test key in
-      # py12cugraph's uv cache). Then set fail-on-findings: true here. Flipping
-      # first turns the gate red on third-party fixtures nobody has reviewed.
+      # Covers the image CONFIG as well as the filesystem: a build argument
+      # surviving into the config is the baked-credential class this fleet hit in
+      # 2026-07, and trivy does not read the config unless asked. Runs BEFORE the
+      # blocking gate, since a step after a red gate does not run at all.
+      # Report-only until one cycle over all six images has given every fixture a
+      # dated allow-rule; then set fail-on-findings: true here.
       - trivy-scan/scan:
           image-ref: arangodb/<< parameters.image_name >>
           scanners: "secret"
@@ -166,15 +130,9 @@ commands:
       - store_artifacts:
           path: /tmp/sbom.cdx.json
           destination: sbom/<< parameters.image_name >>.cdx.json
-      # KEV and EPSS correlation over the FULL-severity report the gate just
-      # wrote. CISA BOD 26-04 moved the federal baseline off flat CVSS onto these
-      # two signals, and trivy reports neither, so a KEV-listed MEDIUM sits below
-      # every CVSS-banded gate here and is otherwise never seen. Report-only
-      # (fail-on-match false): an exploitation signal on an unfixable base-OS
-      # package is triage input, not a reason to block a build nobody can unblock.
-      # It annotates; it never fails. On a red gate the job ends before this
-      # step, which is deliberate: the gate failure is the actionable signal and
-      # the full-band report is stored as an artifact either way.
+      # KEV/EPSS over the full-severity report the gate just wrote: trivy reports
+      # neither, so a KEV-listed MEDIUM sits below every band here. Report-only,
+      # because that signal on an unfixable base-OS package is triage input.
       - trivy-scan/kev-epss-check:
           report-path: /tmp/trivy-results.json
           fail-on-match: false
@@ -226,18 +184,15 @@ jobs:
             curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
             helm version
 
-      # Run integration tests. This is also what lints the GENERATED service
-      # charts: charts/ in this repository is a template whose Chart.yaml carries
-      # {SERVICE_NAME} / {VERSION} placeholders, so it cannot be loaded by helm
-      # or by trivy's helm scanner, and servicemaker runs helm lint/package over
-      # the rendered chart here instead.
+      # Also the only thing that lints the GENERATED service charts: charts/ here
+      # is a template with {SERVICE_NAME}/{VERSION} placeholders, so neither helm
+      # nor trivy's helm scanner can load it. servicemaker lints the rendered one.
       - run:
           name: Run integration tests
           command: cargo run --release --bin integration_tests -- --no-zip-test
 
-  # Filesystem CVE scan of the checked-out repo. Blocking gate on fixable
-  # CRITICAL/HIGH only, which is the industry-standard band, with the full band
-  # written to the artifacts so there is evidence of what the gate did not count.
+  # Blocking on fixable CRITICAL/HIGH, the industry-standard band, with the full
+  # band written to the artifacts as evidence of what the gate did not count.
   dependency-cve-scan:
     docker:
       - image: cimg/base:stable
@@ -252,7 +207,7 @@ jobs:
         type: boolean
         default: true
       # Dev/test dependencies are a visibility tier, never a gate: they are not
-      # in the shipped images. The nightly instance turns this on.
+      # in the shipped images. The nightly instance turns them on.
       extra-args:
         type: string
         default: ""
@@ -261,10 +216,8 @@ jobs:
       - trivy-scan/scan:
           scan-type: fs
           scan-path: "."
-          # Gate on dependency CVEs only. Committed-secret detection is the
-          # separate report-only secret-scan job, so a dev fixture can never
-          # block this gate; leaving scanners empty would silently run trivy's
-          # default secret scanner here as well.
+          # Dependency CVEs only. Leaving scanners empty would run trivy's
+          # default secret scanner here too, letting a dev fixture block the gate.
           scanners: "vuln"
           severity: "<< parameters.severity >>"
           report-severity: "CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN"
@@ -274,19 +227,15 @@ jobs:
           store-junit-results: true
           waivers-path: << pipeline.parameters.waivers-path >>
           waiver-windows: << pipeline.parameters.waiver-windows >>
-          # require-targets is a floor of ONE, so losing two of the three
-          # manifests would still leave a target and the gate would pass with two
-          # thirds of the dependency surface unscanned. Name them, so a manifest
-          # that moves or disappears fails BY NAME. Read off a real run's target
-          # list (trivy v0.72.0: 3 language-specific files, 143 SBOM components).
+          # require-targets is a floor of one, so losing two of the three
+          # manifests would still pass with two thirds unscanned. Names read off
+          # a real run (trivy v0.72.0: 3 files, 143 SBOM components).
           expect-targets: "Cargo.lock,arango-test-service/requirements.txt,arango-test-service-nodejs/package-lock.json"
           sbom-format: both
           sbom-output: /tmp/sbom.cdx.json
           sbom-spdx-output: /tmp/sbom.spdx.json
-      # CISA's 2025 Minimum Elements make tool name, generation context and
-      # component identity required fields. min-components is a floor well below
-      # the 143 components measured on this tree, so it catches an empty or
-      # truncated SBOM without going red on ordinary dependency churn.
+      # CISA 2025 Minimum Elements. The floor sits well below the 143 components
+      # measured here, so a truncated SBOM fails but churn does not.
       - supply-chain/validate-sbom:
           sbom-path: /tmp/sbom.cdx.json
           min-components: "100"
@@ -296,8 +245,8 @@ jobs:
       - store_artifacts:
           path: /tmp/sbom.spdx.json
           destination: sbom/dependency-cve-scan.spdx.json
-      # Durable evidence export (AU-11, CA-7) and continuous re-analysis of the
-      # component inventory (RV.1.2). Both INERT while the parameters are empty.
+      # Evidence export (AU-11, CA-7) and inventory re-analysis (RV.1.2). Both
+      # inert while the parameters are empty.
       - supply-chain/publish-evidence:
           s3-bucket: << pipeline.parameters.evidence-bucket >>
           subject: "${CIRCLE_SHA1}"
@@ -313,15 +262,10 @@ jobs:
           project-name: "servicemaker"
           project-version: "${CIRCLE_BRANCH:-${CIRCLE_TAG}}"
 
-  # Report-only repository secret scan.
-  #
-  # FLIP CRITERION (do not skip it): this stays report-only for ONE cycle with
-  # .circleci/trivy-secret.yaml in place, so any real fixture is enumerated and
-  # given a dated allow-rule first. Then set fail-on-findings: true, add
-  # secret-scan to .github/required-checks.txt and to the image jobs' requires:
-  # chains. Flipping first turns the gate red on fixtures nobody has reviewed,
-  # which is how a gate gets switched off permanently. Starting point: one clean
-  # local run on trivy v0.72.0 with the built-in tests allow-rule disabled.
+  # Report-only for ONE cycle with .circleci/trivy-secret.yaml in place so real
+  # fixtures get dated allow-rules, then fail-on-findings: true plus the
+  # required-check and image-job wiring. Starting point: one clean local run on
+  # trivy v0.72.0 with the built-in tests allow-rule disabled.
   secret-scan:
     docker:
       - image: cimg/base:stable
@@ -332,29 +276,20 @@ jobs:
           scan-path: "."
           scanners: "secret"
           secret-config-path: << pipeline.parameters.secret-config-path >>
-          # Report-only, so widening the band costs the gate nothing while
-          # surfacing the MEDIUM/LOW secret rules the CRITICAL,HIGH default
-          # hides entirely.
+          # Report-only, so the wider band costs the gate nothing.
           severity: "CRITICAL,HIGH,MEDIUM,LOW"
           fail-on-findings: false
           store-junit-results: true
 
-  # Gating IaC/config scan over the Dockerfiles this repository ships and the
-  # Dockerfile templates servicemaker renders into generated services.
-  #
-  # NO helm-lint and no helm misconfig coverage here, deliberately: charts/ is a
-  # TEMPLATE (name: {SERVICE_NAME}, version: {VERSION}), so helm cannot load it
-  # and trivy's helm scanner reads zero files from it. helm lint would fail on
-  # the placeholders, and a misconfig gate that silently scans zero Helm files is
-  # worse than none. The rendered chart is linted by servicemaker itself inside
-  # the integration test.
+  # Covers the shipped Dockerfiles and the templates servicemaker renders.
+  # No helm coverage: charts/ is a TEMPLATE, so trivy's helm scanner reads zero
+  # files. The rendered chart is linted inside the integration test.
   misconfig-scan:
     docker:
       - image: cimg/base:stable
     parameters:
-      # Commit-time gate stays CRITICAL,HIGH. The nightly instance widens to
-      # MEDIUM report-only, which surfaces the unpinned-base-image and
-      # missing-healthcheck band without gating on it.
+      # Nightly widens to MEDIUM report-only, surfacing the unpinned-base-image
+      # and missing-healthcheck band without gating on it.
       severity:
         type: string
         default: "CRITICAL,HIGH"
@@ -372,50 +307,38 @@ jobs:
           store-junit-results: true
           waivers-path: << pipeline.parameters.waivers-path >>
           waiver-windows: << pipeline.parameters.waiver-windows >>
-          # Trivy's dockerfile analyzer does not recognise
-          # Dockerfile.nodejs.template (measured on v0.72.0: it detects
-          # Dockerfile.template and every baseimages/Dockerfile.* and skips that
-          # one), so the Node.js service template was silently unscanned.
-          # First-class parameter, NOT extra-args: extra-args goes through shell
-          # word splitting and quote removal, so a regex written there is not the
-          # regex trivy receives.
+          # Trivy's analyzer skips Dockerfile.nodejs.template while detecting
+          # every other one here (v0.72.0). First-class parameter, not
+          # extra-args, which word-splits and would mangle the regex.
           file-patterns: 'dockerfile:Dockerfile\.nodejs\.template'
-      # Deterministic final-stage build-credential guard. Covers a class trivy
-      # structurally cannot: its secret rules match token PATTERNS, so a generic
-      # registry password matches nothing at all.
+      # Covers a class trivy structurally cannot: its secret rules match token
+      # patterns, so a generic registry password matches nothing at all.
       - trivy-scan/dockerfile-credential-guard:
           dockerfiles: "Dockerfile.template Dockerfile.nodejs.template baseimages/Dockerfile.py12base baseimages/Dockerfile.py12cugraph baseimages/Dockerfile.py12torch baseimages/Dockerfile.node22base"
 
-  # TIER 1 of two: gating SAST over first-party code (the Rust CLI, the two
-  # reference services, the shell and JS helper scripts), full repo,
-  # high-confidence rules only. Semgrep CE from PyPI; the paid AppSec Platform is
-  # deliberately not wired and there is no SEMGREP_APP_TOKEN.
+  # TIER 1: full repo, high-confidence rules only. Semgrep CE; the paid AppSec
+  # Platform is not wired and there is no SEMGREP_APP_TOKEN.
   sast-scan:
     executor: semgrep-scan/default
     steps:
       - checkout
       - semgrep-scan/scan:
-          # p/rust is added because p/default carries almost no Rust rules, and
-          # src/main.rs plus src/bin/integration_tests.rs are the largest piece
-          # of first-party code here.
+          # p/rust, because p/default carries almost no Rust rules and the Rust
+          # CLI is the largest piece of first-party code here.
           rulesets: "p/default p/rust"
-          # GATE at ERROR. severity stays at the orb's INFO default, so the JSON,
-          # SARIF and JUnit carry the whole band while only ERROR fails the job.
+          # `severity` stays at INFO: artifacts keep the full band, only ERROR
+          # fails the job.
           fail-on-severity: ERROR
-          # Semgrep's built-in ignore list drops test/, tests/, build/ and dist/
-          # wholesale. testprojects/ is fixture code that ships in this
-          # repository and is rendered into generated services, so it stays in
-          # scope; the committed .semgrepignore replaces the built-in list.
+          # Semgrep's built-in list drops test trees wholesale, but testprojects/
+          # ships here and is rendered into generated services, so it stays in
+          # scope; the committed .semgrepignore replaces that list.
           scan-tests: true
           semgrepignore-baseline: << pipeline.parameters.sast-required-paths >>
           sarif-output: /tmp/semgrep.sarif
 
-  # TIER 2 of two: diff-aware SAST. The full-repo gate above runs ERROR only,
-  # which leaves semgrep's largest band unused, and p/rust ships no ERROR rules
-  # at all, so without this tier the Rust code is effectively ungated. This
-  # blocks on NEWLY INTRODUCED findings at WARNING without a backlog-clearing
-  # project first (measured on this branch: 3 WARNING findings, all pre-existing
-  # on main, so the diff tier starts green).
+  # TIER 2: diff-aware. The full-repo gate runs ERROR only and p/rust ships no
+  # ERROR rules, so without this the Rust code is ungated. Blocking on newly
+  # introduced WARNINGs avoids clearing the 3 pre-existing ones first.
   sast-scan-diff:
     executor: semgrep-scan/default
     steps:
@@ -426,49 +349,36 @@ jobs:
           fail-on-severity: WARNING
           scan-tests: true
           semgrepignore-baseline: << pipeline.parameters.sast-required-paths >>
-          # Distinct prefix so this job's report does not collide with
-          # sast-scan's in the Artifacts and Tests tabs.
+          # Distinct prefix so this report does not collide with sast-scan's.
           output-prefix: semgrep-diff
 
-  # The enforcement mechanism behind the whole exception path: no accepted risk
-  # without a date, an owner and a window. Blocking, and deliberately so - this
-  # is not gate strictness, it is whether the exception path can be trusted at
-  # all. A missing or malformed waivers file fails rather than being read as an
-  # empty waiver set, so deleting the file cannot silently widen every gate.
+  # No accepted risk without a date, an owner and a window. Blocking on purpose:
+  # a missing or malformed waivers file fails rather than reading as an empty
+  # waiver set, which would widen every gate.
   disposition-check:
     docker:
       - image: cimg/base:stable
     steps:
       - checkout
       - trivy-scan/disposition-check:
-          # No .trivyignore in this repository: dispositions live in the
-          # structured waivers file. The paths are still listed, because a
-          # missing file is skipped and a reintroduced one is then parsed and
-          # dated instead of quietly suppressing findings.
+          # No .trivyignore here; dispositions live in the waivers file. Listed
+          # anyway so a reintroduced one is parsed and dated, not honoured.
           ignorefiles: ".trivyignore.yaml,.trivyignore.yml,.trivyignore"
           secret-config-path: << pipeline.parameters.secret-config-path >>
-          # ALLOWED exclusion set (opposite polarity to the semgrep orb's
-          # parameter of the same name): any active .semgrepignore entry beyond
-          # this list fails the job, so SAST scope cannot be narrowed without a
-          # reviewed change here.
+          # ALLOWED exclusion set, opposite polarity to the semgrep orb's
+          # parameter of the same name: any entry beyond this list fails the job.
           semgrepignore-baseline: << pipeline.parameters.semgrepignore-allowed >>
           poam-windows: "critical=30,high=30,medium=90,low=180"
-      # Waiver integrity: schema, scope, dates, windows, and an approved-by that
-      # has to resolve to a CODEOWNERS entry.
+      # Schema, scope, dates, windows, and an approved-by that has to resolve
+      # to a CODEOWNERS entry.
       - trivy-scan/validate-waivers:
           waivers-path: << pipeline.parameters.waivers-path >>
           waiver-windows: << pipeline.parameters.waiver-windows >>
 
-  # Drift control on the required-status-check configuration itself. A job rename
-  # or a workflow-count change silently renumbers CircleCI's instance suffixes,
-  # which either blocks every merge forever or leaves a required check pointing at
-  # a context nobody emits, so it protects nothing.
-  #
-  # WARN-ONLY, and today it can only report the starting position: this
-  # repository has NO ruleset with required status checks (only the two
-  # enterprise force-push/delete rulesets), so every gate here gates pipeline
-  # progression and none of them blocks a merge yet. Creating that ruleset is an
-  # owner action; flip the two exit 0 lines below to exit 1 in the same change.
+  # A job rename or workflow-count change renumbers CircleCI's instance
+  # suffixes, leaving a required check pointing at a context nobody emits.
+  # WARN-ONLY for now: this repo has no ruleset with required status checks.
+  # Creating one is an owner action; flip the exit 0 lines in the same change.
   required-checks-drift:
     docker:
       - image: cimg/base:stable
@@ -500,9 +410,8 @@ jobs:
               echo "WARNING: could not list rulesets, drift is UNVERIFIED on this run." >&2
               exit 0
             fi
-            # grep/sed rather than a heredoc-fed interpreter: CircleCI reserves a
-            # literal double-less-than for parameter interpolation, so a heredoc
-            # operator in a command body is a standing edit hazard.
+            # grep/sed rather than a heredoc-fed interpreter: CircleCI reserves
+            # the double-less-than operator for parameter interpolation.
             : > /tmp/required-live.txt
             for id in $(grep -oE '"id":[[:space:]]*[0-9]+' /tmp/rulesets.json | grep -oE '[0-9]+'); do
               if curl -sSfL --max-time 60 \
@@ -534,27 +443,23 @@ jobs:
             echo "WARN-ONLY until a ruleset lists the gate contexts. See the flip note in .circleci/config.yml." >&2
             exit 0
 
-  # A gate that has never failed is indistinguishable from no gate. This runs the
-  # SAME configuration the blocking image gates run, against a pinned
-  # known-vulnerable image, and fails when detection has stopped working, so a
-  # broken scanner install, a doctored DB cache or a bad severity filter cannot
-  # leave every other gate passing vacuously.
+  # A gate that has never failed is indistinguishable from no gate. Runs the same
+  # configuration as the blocking image gates against a pinned vulnerable image,
+  # so a broken scanner cannot leave every other gate passing vacuously.
   nightly-self-test:
     docker:
       - image: cimg/base:stable
         user: root
     steps:
       - trivy-scan/scan:
-          # python:3.9-slim, pinned by digest so the fixture cannot drift. NOT an
-          # EOL tag: an EOL distro stops publishing fix data, which is exactly
-          # the weak signal this control must not depend on.
+          # Pinned by digest so the fixture cannot drift. Not an EOL tag: an EOL
+          # distro stops publishing fix data, which weakens the signal.
           image-ref: "python:3.9-slim@sha256:2d97f6910b16bd338d3060f261f53f144965f755599aab1acda1e13cf1731b1b"
           image-src: remote
           scanners: "vuln"
           severity: "CRITICAL,HIGH"
           ignore-unfixed: true
-          # false, so the assertion below owns the verdict: the orb has no
-          # expect-failure mode and a red scan here would read as a pass.
+          # false, so the assertion below owns the verdict: a red scan is a PASS.
           fail-on-findings: false
           output-prefix: "selftest-"
           store-junit-results: false
@@ -589,10 +494,9 @@ jobs:
       detection-priority:
         type: string
         default: ""
-      # The legacy in-container pass: copies the dependency tree out of the image
-      # and fs-scans it, which reaches packages the image analyzers do not
-      # attribute. Nightly only, since it duplicates most of the image gate's
-      # coverage at PR time.
+      # Copies the dependency tree out of the image and fs-scans it, reaching
+      # packages the image analyzers do not attribute. Nightly only, since it
+      # duplicates most of the image gate at PR time.
       in-container-scan:
         type: boolean
         default: false
@@ -631,9 +535,7 @@ jobs:
               echo "ERROR: CIRCLECI_TOKEN is not set (add circleci-token context to security-scan-notify)" >&2
               exit 1
             fi
-            # Every job whose failure means the nightly found something, or that
-            # the scanning machinery itself is broken. Keep this list in step
-            # with the nightly workflow's job names.
+            # Keep in step with the nightly workflow's job names.
             SCAN_JOBS="py12base-nightly py12cugraph-nightly py12torch-nightly node22base-nightly test-service-nightly test-service-nodejs-nightly dependency-cve-scan-nightly disposition-check-nightly nightly-self-test"
             API_URL="https://circleci.com/api/v2/workflow/${CIRCLE_WORKFLOW_ID}/job"
             RESPONSE=$(curl -sf -H "Circle-Token: ${CIRCLECI_TOKEN}" "${API_URL}")
@@ -680,12 +582,9 @@ jobs:
             make build
           no_output_timeout: 60m
 
-      # Gate the push on the SAME policy as the PR-time and nightly image scans:
-      # these images previously shipped to Docker Hub with no scan between the
-      # build and the next scheduled run. Scanning the freshly built local images
-      # here, before push, closes that window instead of relying on post-hoc
-      # detection. output-prefix keeps the four scans from overwriting each
-      # other's report, table, JUnit and SBOM at the orb's fixed output paths.
+      # Same policy as the PR-time and nightly scans: these images used to reach
+      # Docker Hub with no scan between build and the next scheduled run.
+      # output-prefix keeps the four scans off each other's fixed output paths.
       - trivy-scan/scan:
           <<: *image-gate-settings
           image-ref: arangodb/py12base
@@ -743,9 +642,9 @@ jobs:
 workflows:
   version: 2
 
-  # Default workflow: every pipeline that is not a base-image rebuild and not the
-  # deep nightly. This is where the gates live, INCLUDING the image scans, which
-  # used to run only when an externally-set parameter happened to be true.
+  # Every pipeline that is not a base-image rebuild or the deep nightly. The
+  # image scans live here now; they used to run only when an externally-set
+  # parameter happened to be true.
   build-and-test:
     when:
       and:
@@ -763,10 +662,8 @@ workflows:
       - sast-scan-diff
       - disposition-check
       - required-checks-drift
-      # Image scans on every pipeline. Names are explicit so a future topology
-      # change cannot renumber the status-check contexts: CircleCI appends an
-      # instance suffix when a job name appears in more than one workflow, and
-      # the scheme is not predictable.
+      # Explicit names, so a topology change cannot renumber the status-check
+      # contexts: CircleCI's instance-suffix scheme is not predictable.
       - security-scan:
           name: py12base
           image_name: py12base
@@ -792,11 +689,9 @@ workflows:
           image_name: test-service-nodejs
           build_image: false
 
-  # Deep nightly, driven by the "Daily" scheduled pipeline (security_scan: true).
-  # Adds the in-container dependency-tree pass, comprehensive detection, the
-  # full-severity dependency report including dev dependencies, the date-driven
-  # disposition expiry check (which has to fire without a push), the
-  # positive-control self-test and the Slack routing.
+  # Deep nightly, driven by the "Daily" scheduled pipeline. Adds the in-container
+  # pass, comprehensive detection, the full-severity dependency report with dev
+  # dependencies, the date-driven expiry check, the self-test and Slack routing.
   security-scan-nightly:
     when: << pipeline.parameters.security_scan >>
     jobs:
@@ -836,10 +731,8 @@ workflows:
           build_image: false
           detection-priority: comprehensive
           in-container-scan: true
-      # Report tier: the full severity band, unfixed findings included and dev
-      # dependencies in scope. Never blocks, so an unfixed LOW cannot leave the
-      # nightly permanently red; the commit-time gate keeps its fixable
-      # CRITICAL/HIGH band.
+      # Report tier: full band, unfixed and dev dependencies included. Never
+      # blocks, so an unfixed LOW cannot leave the nightly permanently red.
       - dependency-cve-scan:
           name: dependency-cve-scan-nightly
           severity: "CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN"
@@ -870,10 +763,8 @@ workflows:
             - disposition-check-nightly: terminal
             - nightly-self-test: terminal
 
-  # Manual base-image rebuild. The gates now sit in front of the job that pushes
-  # to Docker Hub, so a repository whose waivers have expired, whose Dockerfiles
-  # carry a CRITICAL/HIGH misconfiguration or whose dependency manifests carry a
-  # fixable CRITICAL/HIGH CVE cannot publish an image.
+  # The gates now sit in front of the job that pushes to Docker Hub, so expired
+  # waivers or a fixable CRITICAL/HIGH finding stop the publish.
   rebuild-base-images-manual:
     when: << pipeline.parameters.rebuild_base_images >>
     jobs:
