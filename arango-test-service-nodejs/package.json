@@ -19,6 +19,7 @@
     "brace-expansion": "5.0.9",
     "minimatch": "10.2.5",
     "path-to-regexp": "0.1.13",
-    "body-parser": "1.20.3"
+    "body-parser": "1.20.3",
+    "ip-address": "10.3.1"
   }
 }
