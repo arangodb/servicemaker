@@ -5,7 +5,7 @@ version: 2.1
 # repo diff. Bumps are a reviewed one-line change here.
 orbs:
   slack: circleci/slack@5.1.1
-  trivy-scan: arangodb/trivy-scan@1.2.0
+  trivy-scan: arangodb/trivy-scan@1.6.0
   semgrep-scan: arangodb/semgrep-scan@1.0.0
   supply-chain: arangodb/supply-chain@1.0.0
 
