@@ -96,7 +96,7 @@ outside its severity's window is rejected before the scan runs.
 | MEDIUM | 90 days | |
 | LOW | 180 days | |
 | Design acceptance | 366 days | architectural, re-reviewed annually, not a schedule |
-| On the CISA KEV catalogue | 90 days, capped, and never later than the CISA due date | BOD 26-04 |
+| On the CISA KEV catalogue | 14 days, capped, and never later than the CISA due date | BOD 26-04 |
 
 A waiver cannot cure a breach: a finding already past its window has no valid
 expiry date left, so the entry is rejected and the breach stays visible.
