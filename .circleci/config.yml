@@ -2,7 +2,7 @@ version: 2.1
 
 orbs:
   slack: circleci/slack@5.1.1
-  trivy-scan: arangodb/trivy-scan@0.0.3
+  trivy-scan: arangodb/trivy-scan@1.6.0
 
 # Shared Trivy scan settings (aligned with platform-ui)
 x-trivy-scan: &trivy-scan-settings
@@ -263,4 +263,3 @@ workflows:
     jobs:
       - rebuild-base-images:
           context: docker-hub
-
