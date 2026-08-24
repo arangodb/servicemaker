@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Bumped `tar` override to 7.5.21 (CVE-2026-73566)
 - Bumped `ip-address` override to 10.3.1 (CVE-2026-69192)
 - Bumped `brace-expansion` override to 5.0.9 (CVE-2026-69152)
 - Patched npm's bundled `sigstore` to 4.1.1 in the Node.js 22 base image (CVE-2026-48815)
