@@ -1,0 +1,42 @@
+# CircleCI status-check contexts that MUST be required by a ruleset protecting
+# main. One context per line; blank lines and # comments are ignored.
+#
+# NO SUCH RULESET EXISTS TODAY, so every gate below blocks the pipeline and none
+# blocks a merge. Creating it is an owner action, and required-checks-drift
+# flips to blocking in that same change.
+# The strings are stable because every scan instance carries an explicit
+# `name:`, so CircleCI cannot renumber them. Confirm with `gh pr checks <PR>`.
+
+# Compiles, clippy, and the integration test that helm-lints a rendered chart
+ci/circleci: build-and-test
+
+# Dependency CVEs, fixable CRITICAL/HIGH, waivers subtracted at gate time
+ci/circleci: dependency-cve-scan
+
+# Dockerfile and template misconfiguration, plus the credential guard
+ci/circleci: misconfig-scan
+
+# SAST tier 1: full repo, ERROR band
+ci/circleci: sast-scan
+
+# SAST tier 2: newly introduced WARNINGs, the only tier that gates Rust
+ci/circleci: sast-scan-diff
+
+# Waiver and disposition integrity, plus any shrinkage of SAST scope
+ci/circleci: disposition-check
+
+# Base images and reference services: fixable CRITICAL/HIGH, image-config
+# secret pass, EOL base-OS check
+ci/circleci: py12base
+ci/circleci: py12cugraph
+ci/circleci: py12torch
+ci/circleci: node22base
+ci/circleci: test-service
+ci/circleci: test-service-nodejs
+
+# NOT REQUIRED YET, deliberately:
+#   ci/circleci: secret-scan
+#     Report-only for one enumeration cycle so genuine fixtures get dated
+#     allow-rules first. Add when fail-on-findings flips.
+#   ci/circleci: required-checks-drift
+#     Warn-only by construction; a check that cannot fail adds no protection.

@@ -3,4 +3,8 @@ FROM arangodb/py12base
 RUN /scripts/prepareuv.sh python-arango phenolrs \
     torch torch-geometric torchaudio torchvideo
 
+# No-op at build time: py12base already ends on `USER user`. Restated because
+# Trivy cannot see the parent image's USER and reports DS-0002 HIGH here.
+USER user
+
 CMD [ "/scripts/entrypoint.sh" ]

@@ -1,0 +1,31 @@
+# Accepted-risk waivers for the Trivy gates; schema and validation live in the
+# arangodb/trivy-scan orb (validate-waivers).
+#
+# Replaces .trivyignore, whose entries are bare rule ids with no scope, no date
+# and nobody on record. Subtracted at GATE time only, never passed to trivy as
+# --ignorefile, so the published report keeps every finding.
+#
+# Windows come from waiver-windows in .circleci/config.yml. A waiver cannot cure
+# an SLA breach: a finding past its window has no valid expiry left.
+#
+# Strict YAML subset, one `key: value` per line, no block scalars, so `reason:`
+# is one line. Do not reformat with a YAML pretty-printer.
+
+waivers:
+  # --- CVE remediation (bounded POA&M, not a design acceptance) --------------
+  # Fixed in source by #23 (npm 12 plus paired brace-expansion 5.0.8 and
+  # minimatch 10.2.5 overrides), so images built from main scan clean. This
+  # covers ONLY the already-published Docker Hub tags.
+  # DoS only, reachable by whoever controls the glob npm expands, which here is
+  # the image build and the service manifest, not request-path input.
+  # EXIT CRITERION, not a renewal: a clean registry-side scan of the rebuilt
+  # tags, then delete this file and its waivers-path wiring together.
+  - id: CVE-2026-14257
+    kind: vulnerability
+    class: remediation-pending
+    package: brace-expansion
+    severity: HIGH
+    detected: 2026-07-29
+    expires: 2026-08-28
+    reason: "GHSA-mh99-v99m-4gvg, DoS only, fixed in source by #23 (npm 12 plus paired overrides brace-expansion 5.0.8 and minimatch 10.2.5); retained solely for the already-published registry tags until images rebuilt from main are pushed and the registry-side scans confirm clean, then this file and its waivers-path wiring go away together"
+    approved-by: "@MarkusReadius"

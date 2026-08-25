@@ -1,0 +1,23 @@
+# SAST scope (Semgrep CE, via the semgrep-scan orb).
+# tests/ and testprojects/ are deliberately NOT excluded: Semgrep's built-in
+# list drops test code, and test code here runs in CI with real credentials.
+# The set below is pinned by disposition-check, so adding an entry fails the
+# build until the baseline is updated in a reviewed change.
+
+# Dependencies, VCS metadata and build output: not first-party code.
+.git/
+node_modules/
+__pycache__/
+.venv/
+venv/
+target/
+dist/
+build/
+
+# A chart TEMPLATE: the {VERSION} and {SERVICE_NAME} placeholders make these
+# unparseable YAML, so semgrep can never analyse them.
+charts/templates/
+
+# Semgrep's bash parser fails on the `${ARCHIVE_FILE:-...}` default on line 13
+# and partial-parses the rest silently. Revisit when the parser handles it.
+baseimages/scripts/entrypoint.sh

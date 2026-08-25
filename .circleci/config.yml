@@ -1,16 +1,18 @@
 version: 2.1
 
+# Exact orb versions only: a float resolves at config-compile time, so an orb
+# publish changes what runs in a pipeline that pushes to Docker Hub, with no
+# repo diff. Bumps are a reviewed one-line change here.
 orbs:
   slack: circleci/slack@5.1.1
   trivy-scan: arangodb/trivy-scan@1.6.0
-
-# Shared Trivy scan settings (aligned with platform-ui)
-x-trivy-scan: &trivy-scan-settings
-  severity: "CRITICAL,HIGH"
-  fail-on-findings: true
-  ignore-unfixed: true
+  semgrep-scan: arangodb/semgrep-scan@1.0.0
+  supply-chain: arangodb/supply-chain@1.0.0
 
 parameters:
+  # Selects the deep nightly variant; set by the "Daily" scheduled pipeline.
+  # It no longer gates whether images are scanned AT ALL: the only workflow
+  # with an image scan used to be conditioned on it, and it defaults to false.
   security_scan:
     type: boolean
     default: false
@@ -18,15 +20,75 @@ parameters:
     type: boolean
     default: false
 
+  # Subtracted at GATE time only, never passed to trivy as --ignorefile, so the
+  # published report keeps every finding and only the verdict changes.
+  waivers-path:
+    type: string
+    default: .circleci/security-waivers.yaml
+  # Max expires-minus-detected per severity; same table as SECURITY.md's POA&M.
+  waiver-windows:
+    type: string
+    default: "critical=30,high=30,medium=90,low=180,design=366,kev=14"
+  # Trivy secret-scanner config: re-enables detection inside test trees, which
+  # trivy's built-in allow-rules exclude entirely.
+  secret-config-path:
+    type: string
+    default: .circleci/trivy-secret.yaml
+  # The two orbs read a parameter of this name with OPPOSITE polarity, hence two:
+  #   semgrepignore-allowed  = the only entries .semgrepignore MAY contain
+  #   sast-required-paths    = paths that must NOT be excluded from the scan
+  semgrepignore-allowed:
+    type: string
+    default: ".git/ node_modules/ __pycache__/ .venv/ venv/ target/ dist/ build/ charts/templates/ baseimages/scripts/entrypoint.sh"
+  sast-required-paths:
+    type: string
+    default: "src/ arango-test-service/ arango-test-service-nodejs/ scripts/ testprojects/"
+
+  # Both inert while empty. No bucket and no Dependency-Track host exist yet;
+  # standing up either is an org owner action, recorded in SECURITY.md.
+  evidence-bucket:
+    type: string
+    default: ""
+  dtrack-url:
+    type: string
+    default: ""
+
+# Shared settings for the BLOCKING image gates.
+# Wide report, narrow gate, one scan: the previous two-pass arrangement had the
+# report-only invocation overwrite the gate's results at the orb's fixed output
+# paths, and reordering could not fix it.
+# scanners is pinned to "vuln": trivy's image default includes secret detection,
+# and py12cugraph ships tornado's own test fixture key in the uv cache, which
+# turned the gate red on a third-party fixture. That pass is report-only.
+x-trivy-image-gate: &image-gate-settings
+  scanners: "vuln"
+  severity: "CRITICAL,HIGH"
+  report-severity: "CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN"
+  fail-on-findings: true
+  ignore-unfixed: true
+  store-junit-results: true
+  # Waivers are subtracted from the gate, with the approver and reason logged.
+  waivers-path: << pipeline.parameters.waivers-path >>
+  waiver-windows: << pipeline.parameters.waiver-windows >>
+  # An EOL base OS stops publishing fix data, which with ignore-unfixed reads
+  # as clean. Armed on a non-reserved exit code.
+  exit-on-eol: "1"
+  timeout: "45m"
+
 commands:
   build-and-scan-image:
-    description: Build image (optional) and scan with trivy-scan orb
+    description: Build image (optional) and scan it with the trivy-scan orb
     parameters:
       image_name:
         type: string
       build_image:
         type: boolean
         default: true
+      # "comprehensive" raises recall at the cost of false positives, so it is
+      # set on the nightly instances only, not on a blocking PR gate.
+      detection-priority:
+        type: string
+        default: ""
       scan_timeout:
         type: string
         default: "60m"
@@ -44,9 +106,36 @@ commands:
                   fi
                   docker build -f "Dockerfile.${IMAGE}" -t "arangodb/${IMAGE}" .
                 no_output_timeout: << parameters.scan_timeout >>
+      # Covers the image CONFIG as well as the filesystem: a build argument
+      # surviving into the config is the baked-credential class this fleet hit in
+      # 2026-07, and trivy does not read the config unless asked. Runs BEFORE the
+      # blocking gate, since a step after a red gate does not run at all.
+      # Report-only until one cycle over all six images has given every fixture a
+      # dated allow-rule; then set fail-on-findings: true here.
       - trivy-scan/scan:
-          <<: *trivy-scan-settings
           image-ref: arangodb/<< parameters.image_name >>
+          scanners: "secret"
+          extra-args: "--image-config-scanners secret"
+          secret-config-path: << pipeline.parameters.secret-config-path >>
+          severity: "CRITICAL,HIGH,MEDIUM,LOW"
+          fail-on-findings: false
+          store-junit-results: true
+          output-prefix: "secret-"
+          timeout: "45m"
+      - trivy-scan/scan:
+          <<: *image-gate-settings
+          image-ref: arangodb/<< parameters.image_name >>
+          detection-priority: << parameters.detection-priority >>
+          sbom-output: /tmp/sbom.cdx.json
+      - store_artifacts:
+          path: /tmp/sbom.cdx.json
+          destination: sbom/<< parameters.image_name >>.cdx.json
+      # KEV/EPSS over the full-severity report the gate just wrote: trivy reports
+      # neither, so a KEV-listed MEDIUM sits below every band here. Report-only,
+      # because that signal on an unfixable base-OS package is triage input.
+      - trivy-scan/kev-epss-check:
+          report-path: /tmp/trivy-results.json
+          fail-on-match: false
 
 jobs:
   build-and-test:
@@ -54,32 +143,32 @@ jobs:
       - image: cimg/rust:1.90
     steps:
       - checkout
-      
+
       # Setup Docker
       - setup_remote_docker:
           docker_layer_caching: true
-      
+
       # Restore cargo cache
       - restore_cache:
           keys:
             - cargo-{{ checksum "Cargo.lock" }}
             - cargo-
-      
+
       # Check code compiles
       - run:
           name: Cargo check
           command: cargo check
-      
+
       # Run clippy linter
       - run:
           name: Cargo clippy
           command: cargo clippy --all-targets --all-features -- -D warnings
-      
+
       # Build the project in release mode
       - run:
           name: Build project (release mode)
           command: cargo build --release
-      
+
       # Save cargo cache
       - save_cache:
           paths:
@@ -87,18 +176,313 @@ jobs:
             - /home/circleci/.cargo/git
             - target
           key: cargo-{{ checksum "Cargo.lock" }}
-      
+
       # Install Helm
       - run:
           name: Install Helm
           command: |
             curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
             helm version
-      
-      # Run integration tests
+
+      # Also the only thing that lints the GENERATED service charts: charts/ here
+      # is a template with {SERVICE_NAME}/{VERSION} placeholders, so neither helm
+      # nor trivy's helm scanner can load it. servicemaker lints the rendered one.
       - run:
           name: Run integration tests
           command: cargo run --release --bin integration_tests -- --no-zip-test
+
+  # Blocking on fixable CRITICAL/HIGH, the industry-standard band, with the full
+  # band written to the artifacts as evidence of what the gate did not count.
+  dependency-cve-scan:
+    docker:
+      - image: cimg/base:stable
+    parameters:
+      severity:
+        type: string
+        default: "CRITICAL,HIGH"
+      ignore-unfixed:
+        type: boolean
+        default: true
+      fail-on-findings:
+        type: boolean
+        default: true
+      # Dev/test dependencies are a visibility tier, never a gate: they are not
+      # in the shipped images. The nightly instance turns them on.
+      extra-args:
+        type: string
+        default: ""
+    steps:
+      - checkout
+      - trivy-scan/scan:
+          scan-type: fs
+          scan-path: "."
+          # Dependency CVEs only. Leaving scanners empty would run trivy's
+          # default secret scanner here too, letting a dev fixture block the gate.
+          scanners: "vuln"
+          severity: "<< parameters.severity >>"
+          report-severity: "CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN"
+          ignore-unfixed: << parameters.ignore-unfixed >>
+          fail-on-findings: << parameters.fail-on-findings >>
+          extra-args: "<< parameters.extra-args >>"
+          store-junit-results: true
+          waivers-path: << pipeline.parameters.waivers-path >>
+          waiver-windows: << pipeline.parameters.waiver-windows >>
+          # require-targets is a floor of one, so losing two of the three
+          # manifests would still pass with two thirds unscanned. Names read off
+          # a real run (trivy v0.72.0: 3 files, 143 SBOM components).
+          expect-targets: "Cargo.lock,arango-test-service/requirements.txt,arango-test-service-nodejs/package-lock.json"
+          sbom-format: both
+          sbom-output: /tmp/sbom.cdx.json
+          sbom-spdx-output: /tmp/sbom.spdx.json
+      # CISA 2025 Minimum Elements. The floor sits well below the 143 components
+      # measured here, so a truncated SBOM fails but churn does not.
+      - supply-chain/validate-sbom:
+          sbom-path: /tmp/sbom.cdx.json
+          min-components: "100"
+      - store_artifacts:
+          path: /tmp/sbom.cdx.json
+          destination: sbom/dependency-cve-scan.cdx.json
+      - store_artifacts:
+          path: /tmp/sbom.spdx.json
+          destination: sbom/dependency-cve-scan.spdx.json
+      # Evidence export (AU-11, CA-7) and inventory re-analysis (RV.1.2). Both
+      # inert while the parameters are empty.
+      - supply-chain/publish-evidence:
+          s3-bucket: << pipeline.parameters.evidence-bucket >>
+          subject: "${CIRCLE_SHA1}"
+          project: "servicemaker-dependency-gate"
+          report-json: /tmp/trivy-results.json
+          report-table: /tmp/trivy-results.txt
+          sbom-cyclonedx: /tmp/sbom.cdx.json
+          sbom-spdx: /tmp/sbom.spdx.json
+          scanner-provenance: /tmp/trivy-scanner-provenance.json
+      - supply-chain/dtrack-upload:
+          dtrack-url: << pipeline.parameters.dtrack-url >>
+          sbom-path: /tmp/sbom.cdx.json
+          project-name: "servicemaker"
+          project-version: "${CIRCLE_BRANCH:-${CIRCLE_TAG}}"
+
+  # Report-only for ONE cycle with .circleci/trivy-secret.yaml in place so real
+  # fixtures get dated allow-rules, then fail-on-findings: true plus the
+  # required-check and image-job wiring. Starting point: one clean local run on
+  # trivy v0.72.0 with the built-in tests allow-rule disabled.
+  secret-scan:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - trivy-scan/scan:
+          scan-type: fs
+          scan-path: "."
+          scanners: "secret"
+          secret-config-path: << pipeline.parameters.secret-config-path >>
+          # Report-only, so the wider band costs the gate nothing.
+          severity: "CRITICAL,HIGH,MEDIUM,LOW"
+          fail-on-findings: false
+          store-junit-results: true
+
+  # Covers the shipped Dockerfiles and the templates servicemaker renders.
+  # No helm coverage: charts/ is a TEMPLATE, so trivy's helm scanner reads zero
+  # files. The rendered chart is linted inside the integration test.
+  misconfig-scan:
+    docker:
+      - image: cimg/base:stable
+    parameters:
+      # Nightly widens to MEDIUM report-only, surfacing the unpinned-base-image
+      # and missing-healthcheck band without gating on it.
+      severity:
+        type: string
+        default: "CRITICAL,HIGH"
+      fail-on-findings:
+        type: boolean
+        default: true
+    steps:
+      - checkout
+      - trivy-scan/scan:
+          scan-type: fs
+          scan-path: "."
+          scanners: "misconfig"
+          severity: "<< parameters.severity >>"
+          fail-on-findings: << parameters.fail-on-findings >>
+          store-junit-results: true
+          waivers-path: << pipeline.parameters.waivers-path >>
+          waiver-windows: << pipeline.parameters.waiver-windows >>
+          # Trivy's analyzer skips Dockerfile.nodejs.template while detecting
+          # every other one here (v0.72.0). First-class parameter, not
+          # extra-args, which word-splits and would mangle the regex.
+          file-patterns: 'dockerfile:Dockerfile\.nodejs\.template'
+      # Covers a class trivy structurally cannot: its secret rules match token
+      # patterns, so a generic registry password matches nothing at all.
+      - trivy-scan/dockerfile-credential-guard:
+          dockerfiles: "Dockerfile.template Dockerfile.nodejs.template baseimages/Dockerfile.py12base baseimages/Dockerfile.py12cugraph baseimages/Dockerfile.py12torch baseimages/Dockerfile.node22base"
+
+  # TIER 1: full repo, high-confidence rules only. Semgrep CE; the paid AppSec
+  # Platform is not wired and there is no SEMGREP_APP_TOKEN.
+  sast-scan:
+    executor: semgrep-scan/default
+    steps:
+      - checkout
+      - semgrep-scan/scan:
+          # p/rust, because p/default carries almost no Rust rules and the Rust
+          # CLI is the largest piece of first-party code here.
+          rulesets: "p/default p/rust"
+          # `severity` stays at INFO: artifacts keep the full band, only ERROR
+          # fails the job.
+          fail-on-severity: ERROR
+          # Semgrep's built-in list drops test trees wholesale, but testprojects/
+          # ships here and is rendered into generated services, so it stays in
+          # scope; the committed .semgrepignore replaces that list.
+          scan-tests: true
+          semgrepignore-baseline: << pipeline.parameters.sast-required-paths >>
+          sarif-output: /tmp/semgrep.sarif
+
+  # TIER 2: diff-aware. The full-repo gate runs ERROR only and p/rust ships no
+  # ERROR rules, so without this the Rust code is ungated. Blocking on newly
+  # introduced WARNINGs avoids clearing the 3 pre-existing ones first.
+  sast-scan-diff:
+    executor: semgrep-scan/default
+    steps:
+      - checkout
+      - semgrep-scan/scan:
+          rulesets: "p/default p/rust"
+          baseline-commit: main
+          fail-on-severity: WARNING
+          scan-tests: true
+          semgrepignore-baseline: << pipeline.parameters.sast-required-paths >>
+          # Distinct prefix so this report does not collide with sast-scan's.
+          output-prefix: semgrep-diff
+
+  # No accepted risk without a date, an owner and a window. Blocking on purpose:
+  # a missing or malformed waivers file fails rather than reading as an empty
+  # waiver set, which would widen every gate.
+  disposition-check:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - trivy-scan/disposition-check:
+          # No .trivyignore here; dispositions live in the waivers file. Listed
+          # anyway so a reintroduced one is parsed and dated, not honoured.
+          ignorefiles: ".trivyignore.yaml,.trivyignore.yml,.trivyignore"
+          secret-config-path: << pipeline.parameters.secret-config-path >>
+          # ALLOWED exclusion set, opposite polarity to the semgrep orb's
+          # parameter of the same name: any entry beyond this list fails the job.
+          semgrepignore-baseline: << pipeline.parameters.semgrepignore-allowed >>
+          poam-windows: "critical=30,high=30,medium=90,low=180"
+      # Schema, scope, dates, windows, and an approved-by that has to resolve
+      # to a CODEOWNERS entry.
+      - trivy-scan/validate-waivers:
+          waivers-path: << pipeline.parameters.waivers-path >>
+          waiver-windows: << pipeline.parameters.waiver-windows >>
+
+  # A job rename or workflow-count change renumbers CircleCI's instance
+  # suffixes, leaving a required check pointing at a context nobody emits.
+  # WARN-ONLY for now: this repo has no ruleset with required status checks.
+  # Creating one is an owner action; flip the exit 0 lines in the same change.
+  required-checks-drift:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - run:
+          name: Compare the live rulesets against .github/required-checks.txt
+          command: |
+            set -eu
+            LIST=".github/required-checks.txt"
+            if [ ! -s "${LIST}" ]; then
+              echo "WARNING: ${LIST} is missing or empty, so there is no committed list to compare against. Commit it." >&2
+              exit 0
+            fi
+            grep -vE '^[[:space:]]*(#|$)' "${LIST}" \
+              | sed -e 's/[[:space:]]*$//' | sort -u > /tmp/required-expected.txt
+            echo "Committed required contexts (${LIST}):"
+            sed -e 's/^/  /' /tmp/required-expected.txt
+            if [ -z "${GITHUB_TOKEN:-}" ]; then
+              echo "WARNING: GITHUB_TOKEN is not in the environment, so the live rulesets could not be read and drift is UNVERIFIED on this run. Attach a context carrying a read-only token with repository administration:read." >&2
+              exit 0
+            fi
+            API="https://api.github.com/repos/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}"
+            if ! curl -sSfL --retry 3 --retry-delay 2 --max-time 60 \
+                  -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                  -H "Accept: application/vnd.github+json" \
+                  -H "X-GitHub-Api-Version: 2022-11-28" \
+                  -o /tmp/rulesets.json "${API}/rulesets"; then
+              echo "WARNING: could not list rulesets, drift is UNVERIFIED on this run." >&2
+              exit 0
+            fi
+            # grep/sed rather than a heredoc-fed interpreter: CircleCI reserves
+            # the double-less-than operator for parameter interpolation.
+            : > /tmp/required-live.txt
+            for id in $(grep -oE '"id":[[:space:]]*[0-9]+' /tmp/rulesets.json | grep -oE '[0-9]+'); do
+              if curl -sSfL --max-time 60 \
+                    -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                    -H "Accept: application/vnd.github+json" \
+                    -H "X-GitHub-Api-Version: 2022-11-28" \
+                    -o "/tmp/ruleset-${id}.json" "${API}/rulesets/${id}"; then
+                grep -oE '"context":[[:space:]]*"[^"]*"' "/tmp/ruleset-${id}.json" \
+                  | sed -e 's/.*"\([^"]*\)"$/\1/' >> /tmp/required-live.txt || true
+              fi
+            done
+            sort -u /tmp/required-live.txt -o /tmp/required-live.txt
+            echo "Live required contexts across all rulesets:"
+            sed -e 's/^/  /' /tmp/required-live.txt
+            MISSING="$(comm -23 /tmp/required-expected.txt /tmp/required-live.txt)"
+            EXTRA="$(comm -13 /tmp/required-expected.txt /tmp/required-live.txt)"
+            if [ -z "${MISSING}" ] && [ -z "${EXTRA}" ]; then
+              echo "Rulesets match the committed list."
+              exit 0
+            fi
+            if [ -n "${MISSING}" ]; then
+              echo "DRIFT: committed but NOT required by any ruleset, so these gates do not block a merge:" >&2
+              printf '%s\n' "${MISSING}" | sed -e 's/^/  /' >&2
+            fi
+            if [ -n "${EXTRA}" ]; then
+              echo "DRIFT: required by a ruleset but NOT in the committed list. A required context that no job emits is fail-closed and blocks every merge; one that matches the wrong job silently drops the intended gate:" >&2
+              printf '%s\n' "${EXTRA}" | sed -e 's/^/  /' >&2
+            fi
+            echo "WARN-ONLY until a ruleset lists the gate contexts. See the flip note in .circleci/config.yml." >&2
+            exit 0
+
+  # A gate that has never failed is indistinguishable from no gate. Runs the same
+  # configuration as the blocking image gates against a pinned vulnerable image,
+  # so a broken scanner cannot leave every other gate passing vacuously.
+  nightly-self-test:
+    docker:
+      - image: cimg/base:stable
+        user: root
+    steps:
+      - trivy-scan/scan:
+          # Pinned by digest so the fixture cannot drift. Not an EOL tag: an EOL
+          # distro stops publishing fix data, which weakens the signal.
+          image-ref: "python:3.9-slim@sha256:2d97f6910b16bd338d3060f261f53f144965f755599aab1acda1e13cf1731b1b"
+          image-src: remote
+          scanners: "vuln"
+          severity: "CRITICAL,HIGH"
+          ignore-unfixed: true
+          # false, so the assertion below owns the verdict: a red scan is a PASS.
+          fail-on-findings: false
+          output-prefix: "selftest-"
+          store-junit-results: false
+      - run:
+          name: Assert the positive control detected findings
+          command: |
+            set -eu
+            REPORT="/tmp/selftest-trivy-results.json"
+            FLOOR=5
+            if [ ! -s "${REPORT}" ]; then
+              echo "ERROR: the positive control produced no report at ${REPORT}, so the scan machinery did not run. This is a broken gate, not a clean image." >&2
+              exit 1
+            fi
+            COUNT="$(grep -oE '"VulnerabilityID":[[:space:]]*"[^"]+"' "${REPORT}" | sort -u | wc -l | tr -d ' ')"
+            echo "Positive control: ${COUNT} unique fixable CRITICAL/HIGH id(s) in the pinned fixture image (floor ${FLOOR})."
+            if [ "${COUNT}" -lt "${FLOOR}" ]; then
+              echo "ERROR: the pinned known-vulnerable fixture came back with ${COUNT} findings, below the floor of ${FLOOR}. The vulnerability database, the scanner install or the severity filter is broken, so every OTHER gate in this pipeline is currently passing vacuously. Do not disposition this; fix the scanner." >&2
+              exit 1
+            fi
+            echo "Detection is proven for this configuration on this run."
+      - store_artifacts:
+          path: /tmp/selftest-trivy-results.json
+          destination: selftest-trivy-results.json
 
   security-scan:
     parameters:
@@ -107,25 +491,38 @@ jobs:
       build_image:
         type: boolean
         default: true
+      detection-priority:
+        type: string
+        default: ""
+      # Copies the dependency tree out of the image and fs-scans it, reaching
+      # packages the image analyzers do not attribute. Nightly only, since it
+      # duplicates most of the image gate at PR time.
+      in-container-scan:
+        type: boolean
+        default: false
     docker:
       # root required: trivy-scan orb installs the binary to /usr/local/bin
       - image: cimg/base:stable
         user: root
     steps:
       - checkout
-      
+
       # Setup Docker
       - setup_remote_docker:
           docker_layer_caching: true
       - build-and-scan-image:
           image_name: << parameters.image_name >>
           build_image: << parameters.build_image >>
-      - run:
-          name: In-container scan arangodb/<< parameters.image_name >>
-          command: |
-            chmod +x baseimages/scan_security.sh
-            SCAN_SINGLE_IMAGE=<< parameters.image_name >> IN_CONTAINER_ONLY=1 baseimages/scan_security.sh
-          no_output_timeout: 30m
+          detection-priority: << parameters.detection-priority >>
+      - when:
+          condition: << parameters.in-container-scan >>
+          steps:
+            - run:
+                name: In-container scan arangodb/<< parameters.image_name >>
+                command: |
+                  chmod +x baseimages/scan_security.sh
+                  SCAN_SINGLE_IMAGE=<< parameters.image_name >> IN_CONTAINER_ONLY=1 baseimages/scan_security.sh
+                no_output_timeout: 30m
 
   security-scan-notify:
     docker:
@@ -138,7 +535,8 @@ jobs:
               echo "ERROR: CIRCLECI_TOKEN is not set (add circleci-token context to security-scan-notify)" >&2
               exit 1
             fi
-            SCAN_JOBS="py12base py12cugraph py12torch node22base test-service test-service-nodejs"
+            # Keep in step with the nightly workflow's job names.
+            SCAN_JOBS="py12base-nightly py12cugraph-nightly py12torch-nightly node22base-nightly test-service-nightly test-service-nodejs-nightly dependency-cve-scan-nightly disposition-check-nightly nightly-self-test"
             API_URL="https://circleci.com/api/v2/workflow/${CIRCLE_WORKFLOW_ID}/job"
             RESPONSE=$(curl -sf -H "Circle-Token: ${CIRCLECI_TOKEN}" "${API_URL}")
             FAILED_JOBS=""
@@ -165,17 +563,17 @@ jobs:
       - image: cimg/rust:1.90
     steps:
       - checkout
-      
+
       # Setup Docker
       - setup_remote_docker:
           docker_layer_caching: true
-      
+
       # Login to Docker Hub
       - run:
           name: Login to Docker Hub
           command: |
             echo "$DOCKER_HUB_PASSWORD" | docker login -u "$DOCKER_HUB_USER" --password-stdin
-      
+
       # Build base images
       - run:
           name: Build base images
@@ -183,14 +581,50 @@ jobs:
             cd baseimages
             make build
           no_output_timeout: 60m
-      
+
+      # Same policy as the PR-time and nightly scans: these images used to reach
+      # Docker Hub with no scan between build and the next scheduled run.
+      # output-prefix keeps the four scans off each other's fixed output paths.
+      - trivy-scan/scan:
+          <<: *image-gate-settings
+          image-ref: arangodb/py12base
+          output-prefix: "py12base-"
+          sbom-output: /tmp/sbom-py12base.cdx.json
+      - store_artifacts:
+          path: /tmp/sbom-py12base.cdx.json
+          destination: sbom/py12base.cdx.json
+      - trivy-scan/scan:
+          <<: *image-gate-settings
+          image-ref: arangodb/py12cugraph
+          output-prefix: "py12cugraph-"
+          sbom-output: /tmp/sbom-py12cugraph.cdx.json
+      - store_artifacts:
+          path: /tmp/sbom-py12cugraph.cdx.json
+          destination: sbom/py12cugraph.cdx.json
+      - trivy-scan/scan:
+          <<: *image-gate-settings
+          image-ref: arangodb/py12torch
+          output-prefix: "py12torch-"
+          sbom-output: /tmp/sbom-py12torch.cdx.json
+      - store_artifacts:
+          path: /tmp/sbom-py12torch.cdx.json
+          destination: sbom/py12torch.cdx.json
+      - trivy-scan/scan:
+          <<: *image-gate-settings
+          image-ref: arangodb/node22base
+          output-prefix: "node22base-"
+          sbom-output: /tmp/sbom-node22base.cdx.json
+      - store_artifacts:
+          path: /tmp/sbom-node22base.cdx.json
+          destination: sbom/node22base.cdx.json
+
       # Push base images
       - run:
           name: Push base images to Docker Hub
           command: |
             cd baseimages
             make push
-     
+
       - run:
           name: Install Helm
           command: |
@@ -204,8 +638,13 @@ jobs:
             cargo build --release
             make test-service test-service-nodejs
           no_output_timeout: 60m
+
 workflows:
   version: 2
+
+  # Every pipeline that is not a base-image rebuild or the deep nightly. The
+  # image scans live here now; they used to run only when an externally-set
+  # parameter happened to be true.
   build-and-test:
     when:
       and:
@@ -216,11 +655,15 @@ workflows:
           filters:
             branches:
               ignore: []  # Run on all branches
-  
-  security-scan-nightly:
-    when: << pipeline.parameters.security_scan >>
-    jobs:
-      # Parallel jobs
+      - dependency-cve-scan
+      - secret-scan
+      - misconfig-scan
+      - sast-scan
+      - sast-scan-diff
+      - disposition-check
+      - required-checks-drift
+      # Explicit names, so a topology change cannot renumber the status-check
+      # contexts: CircleCI's instance-suffix scheme is not predictable.
       - security-scan:
           name: py12base
           image_name: py12base
@@ -245,21 +688,95 @@ workflows:
           name: test-service-nodejs
           image_name: test-service-nodejs
           build_image: false
+
+  # Deep nightly, driven by the "Daily" scheduled pipeline. Adds the in-container
+  # pass, comprehensive detection, the full-severity dependency report with dev
+  # dependencies, the date-driven expiry check, the self-test and Slack routing.
+  security-scan-nightly:
+    when: << pipeline.parameters.security_scan >>
+    jobs:
+      - security-scan:
+          name: py12base-nightly
+          image_name: py12base
+          build_image: true
+          detection-priority: comprehensive
+          in-container-scan: true
+      - security-scan:
+          name: py12cugraph-nightly
+          image_name: py12cugraph
+          build_image: true
+          detection-priority: comprehensive
+          in-container-scan: true
+      - security-scan:
+          name: py12torch-nightly
+          image_name: py12torch
+          build_image: true
+          detection-priority: comprehensive
+          in-container-scan: true
+      - security-scan:
+          name: node22base-nightly
+          image_name: node22base
+          build_image: true
+          detection-priority: comprehensive
+          in-container-scan: true
+      - security-scan:
+          name: test-service-nightly
+          image_name: test-service
+          build_image: false
+          detection-priority: comprehensive
+          in-container-scan: true
+      - security-scan:
+          name: test-service-nodejs-nightly
+          image_name: test-service-nodejs
+          build_image: false
+          detection-priority: comprehensive
+          in-container-scan: true
+      # Report tier: full band, unfixed and dev dependencies included. Never
+      # blocks, so an unfixed LOW cannot leave the nightly permanently red.
+      - dependency-cve-scan:
+          name: dependency-cve-scan-nightly
+          severity: "CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN"
+          ignore-unfixed: false
+          fail-on-findings: false
+          extra-args: "--include-dev-deps"
+      - misconfig-scan:
+          name: misconfig-scan-nightly
+          severity: "CRITICAL,HIGH,MEDIUM"
+          fail-on-findings: false
+      # Expiry is date-driven, so it has to run without a push.
+      - disposition-check:
+          name: disposition-check-nightly
+      - nightly-self-test
       - security-scan-notify:
           context:
             - slack-secrets
             - circleci-token
           # terminal = run after each scan finishes (success or failure)
           requires:
-            - py12base: terminal
-            - py12cugraph: terminal
-            - py12torch: terminal
-            - node22base: terminal
-            - test-service: terminal
-            - test-service-nodejs: terminal
-  
+            - py12base-nightly: terminal
+            - py12cugraph-nightly: terminal
+            - py12torch-nightly: terminal
+            - node22base-nightly: terminal
+            - test-service-nightly: terminal
+            - test-service-nodejs-nightly: terminal
+            - dependency-cve-scan-nightly: terminal
+            - disposition-check-nightly: terminal
+            - nightly-self-test: terminal
+
+  # The gates now sit in front of the job that pushes to Docker Hub, so expired
+  # waivers or a fixable CRITICAL/HIGH finding stop the publish.
   rebuild-base-images-manual:
     when: << pipeline.parameters.rebuild_base_images >>
     jobs:
+      - dependency-cve-scan:
+          name: dependency-cve-scan-rebuild
+      - misconfig-scan:
+          name: misconfig-scan-rebuild
+      - disposition-check:
+          name: disposition-check-rebuild
       - rebuild-base-images:
           context: docker-hub
+          requires:
+            - dependency-cve-scan-rebuild
+            - misconfig-scan-rebuild
+            - disposition-check-rebuild

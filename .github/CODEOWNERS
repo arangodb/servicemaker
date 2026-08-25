@@ -1,0 +1,17 @@
+# Auto-requests security-owner review. Visibility only: require_code_owner_review
+# is off because a sole owner cannot approve their own PR and would deadlock.
+# Also what validate-waivers resolves `approved-by` against, so a waiver naming
+# an unlisted approver fails the gate.
+# The base-image Dockerfiles and the chart template are deliberately not owned:
+# the gates guard those, and owning them would route every bump here.
+/.circleci/          @MarkusReadius
+/.github/            @MarkusReadius
+/.trivyignore*       @MarkusReadius
+# Catches a copy at the repo root, where the orb's default parameter points.
+/trivy-secret.yaml   @MarkusReadius
+# Posture scorecard: a security record.
+/.security/          @MarkusReadius
+# Shrinking SAST scope or un-ignoring a path must surface to the owner.
+/.semgrepignore      @MarkusReadius
+/.gitignore          @MarkusReadius
+/SECURITY.md         @MarkusReadius

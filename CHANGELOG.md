@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- CI: Bump the `trivy-scan` orb 0.0.3 → 1.1.2, pinned exactly (a float is resolved at config-compile time, so an orb publish would change what runs on the publish path with no repo diff). The vulnerability DB is now cached under a daily-rotating key (the old static key never refreshed, because CircleCI caches are immutable) and pulled via the mirror.gcr.io → ECR → ghcr.io registry chain. New `dependency-cve-scan` filesystem scan runs on every pipeline with `fail-on-findings: true`, gating on fixable CRITICAL/HIGH CVEs, and names its three dependency manifests with `expect-targets` so a manifest that moves or disappears fails by name instead of shrinking the gate silently.
+- CI: **The image scans no longer depend on the `security_scan` pipeline parameter.** They used to live only in a workflow conditioned on that parameter, which defaults to false, so nothing scanned the published images on a push, a PR, an API trigger or any branch the "Daily" schedule does not name. All six image gates (`py12base`, `py12cugraph`, `py12torch`, `node22base`, `test-service`, `test-service-nodejs`) now also run in the default workflow, so a Dockerfile change is scanned before it merges.
+- CI: Each image gate is now a single scan with a narrow gate band and a wide report band (`report-severity` CRITICAL→UNKNOWN), replacing the previous second report-only pass. The second pass re-scanned the same image and overwrote the gate's results at the orb's fixed output paths, and it could not simply be reordered: it ran after the gate, so on a red gate the job ended first and the report never ran at all. Each gate pins `scanners: vuln`, fails on an end-of-life base OS (`exit-on-eol`), stores a CycloneDX SBOM and correlates its findings against the CISA KEV catalogue and EPSS (report-only). Secret detection over the image filesystem and the image config (`--image-config-scanners secret`) runs as a separate report-only pass in the same job, ordered before the gate. Trivy's default scanner set for an image includes secrets, and the first run showed what leaving that inside a blocking gate costs: `py12cugraph` ships tornado's own test fixture key in the uv archive cache, which failed a vulnerability gate on a third-party fixture. That path now carries a dated allow-rule.
+- CI: `rebuild-base-images-manual` now scans each base image with the same CRITICAL/HIGH gate between `make build` and `make push`, and the push job requires `dependency-cve-scan`, `misconfig-scan` and `disposition-check` to pass first, so nothing reaches Docker Hub from a tree with an expired waiver or a failing gate.
+- CI: New gates in the default workflow: `misconfig-scan` (Trivy misconfiguration over every Dockerfile and both service templates, plus the final-stage build-credential guard), `sast-scan` and `sast-scan-diff` (Semgrep CE, `p/default` + `p/rust`, ERROR full-repo and WARNING on newly introduced findings), `disposition-check` (waiver and disposition integrity, blocking), `secret-scan` (report-only) and `required-checks-drift` (warn-only). The nightly adds a full-severity dependency report including dev dependencies, a MEDIUM misconfiguration report, and `nightly-self-test`, which scans a digest-pinned known-vulnerable image and fails if detection has stopped working.
+- CI: `misconfig-scan` passes `file-patterns` for `Dockerfile.nodejs.template`; Trivy's dockerfile analyzer does not recognise that filename, so the Node.js service template was silently unscanned.
+- CI: `dependency-cve-scan` now sets `ignore-unfixed: true` explicitly (previously relied on the orb's default), matching the explicit setting already used by every image-scan job.
+- `baseimages/Dockerfile.py12torch` restates the `USER user` it already inherits from `arangodb/py12base`. No build-time change; Trivy cannot see a parent image's USER, so it reported DS-0002 as a HIGH against this file.
+
+### Added
+
+- `SECURITY.md`: reporting channel and response times, the two-tier gate policy, per-severity remediation windows including the KEV row, the required-check list and why the strings are unstable, the honest SLSA Build L0 statement for the published images, and a Known gaps table with the price of each paid alternative.
+- `.circleci/security-waivers.yaml`: structured accepted-risk waivers, subtracted at gate time only so the published report and SBOM keep every finding. Validated on every pipeline: schema, scope, severity window, expiry, and an `approved-by` that must resolve to `.github/CODEOWNERS`.
+- `.circleci/trivy-secret.yaml`: disables Trivy's built-in `tests` allow-rule, which otherwise excludes every test and fixture tree from secret detection entirely.
+- `.semgrepignore` plus a scope-shrinkage guard in both directions, so a directory cannot be removed from SAST scope without a reviewed change.
+- `.github/CODEOWNERS`, `.github/required-checks.txt` and `.security/baseline.yml` (per-control posture, with the unproven and blocked controls named).
+
 ### Security
 
 - Bumped `tar` override to 7.5.21 (CVE-2026-73566)
