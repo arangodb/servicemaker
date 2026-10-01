@@ -39,10 +39,15 @@ commands:
                 command: |
                   cd baseimages
                   IMAGE="<< parameters.image_name >>"
+                  SECURITY_REFRESH="${CIRCLE_BUILD_NUM:-$(date -u +%Y-%m-%d)}"
                   if [ "${IMAGE}" = "py12cugraph" ] || [ "${IMAGE}" = "py12torch" ]; then
-                    docker build -f Dockerfile.py12base -t arangodb/py12base .
+                    docker build --pull --build-arg "SECURITY_REFRESH=${SECURITY_REFRESH}" \
+                      -f Dockerfile.py12base -t arangodb/py12base .
+                    docker build -f "Dockerfile.${IMAGE}" -t "arangodb/${IMAGE}" .
+                  else
+                    docker build --pull --build-arg "SECURITY_REFRESH=${SECURITY_REFRESH}" \
+                      -f "Dockerfile.${IMAGE}" -t "arangodb/${IMAGE}" .
                   fi
-                  docker build -f "Dockerfile.${IMAGE}" -t "arangodb/${IMAGE}" .
                 no_output_timeout: << parameters.scan_timeout >>
       - trivy-scan/scan:
           <<: *trivy-scan-settings
