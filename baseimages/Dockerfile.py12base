@@ -1,7 +1,10 @@
 FROM ubuntu:24.04
 
+ARG SECURITY_REFRESH=manual
+
 COPY ./scripts /scripts
-RUN /scripts/debinstall.sh
+RUN echo "Security refresh: ${SECURITY_REFRESH}" && \
+    /scripts/debinstall.sh
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-venv python3-dev \

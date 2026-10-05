@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Upgraded `axios` to 1.20.0, `brace-expansion` to 5.0.11, `joi` to fixed releases, and `undici` to fixed releases in Node.js images and examples
+- Added a per-build security-refresh argument so cached base-image builds still install current Ubuntu security updates
 - Bumped `tar` override to 7.5.21 (CVE-2026-73566)
 - Bumped `ip-address` override to 10.3.1 (CVE-2026-69192)
 - Bumped `brace-expansion` override to 5.0.9 (CVE-2026-69152)
