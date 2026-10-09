@@ -103,7 +103,7 @@ RUN npm install \
     async@3.2.5 \
     # Security
     jsonwebtoken@9.0.2 \
-    bcrypt@5.1.1 \
+    bcrypt@6.0.0 \
     --omit=dev --legacy-peer-deps
 
 # Create checksums for base node_modules (for tracking, base remains immutable)
