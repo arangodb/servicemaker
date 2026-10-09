@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Base images and test-service images are built for `linux/amd64` and `linux/arm64` and published as multi-arch `latest` manifests (per-arch `latest-<arch>` tags merged with `regctl`)
+- CircleCI jobs run on self-hosted `arangodb/*` runners; added the push-free `verify-images` workflow that builds and smoke-tests every image on both architectures
+- `baseimages/build.sh`, `push.sh`, the base-image `Makefile` and the `test-service` targets take an optional `ARCH`; the `test-service` targets take `PUSH=0` to build without pushing
+
 ### Security
 
 - Upgraded `axios` to 1.20.0, `brace-expansion` to 5.0.11, `joi` to fixed releases, and `undici` to fixed releases in Node.js images and examples

@@ -1,4 +1,13 @@
-.PHONY: release clean help test-service
+.PHONY: release clean help test-service test-service-nodejs
+
+# ARCH (optional, amd64|arm64): build the test-service images for linux/$(ARCH)
+# and tag them arangodb/<image>:latest-$(ARCH). Unset: host platform, arangodb/<image>.
+# PUSH=0 builds without pushing (default: push, as before).
+ARCH ?=
+PUSH ?= 1
+TEST_SERVICE_TAG = $(if $(ARCH),:latest-$(ARCH),)
+PUSH_FLAG = $(if $(filter 1,$(PUSH)),--push,)
+PLATFORM_ENV = $(if $(ARCH),DOCKER_DEFAULT_PLATFORM=linux/$(ARCH),)
 
 # Default target
 help:
@@ -47,7 +56,7 @@ clean:
 	@echo "✓ Cleaned build artifacts"
 
 test-service:
-	target/release/servicemaker --project-home arango-test-service --port 8000 --make-tar-gz --push --image-name arangodb/test-service
+	$(PLATFORM_ENV) target/release/servicemaker --project-home arango-test-service --port 8000 --make-tar-gz $(PUSH_FLAG) --image-name arangodb/test-service$(TEST_SERVICE_TAG)
 
 test-service-nodejs:
-	target/release/servicemaker --project-home arango-test-service-nodejs --port 8000 --make-tar-gz --push --image-name arangodb/test-service-nodejs
+	$(PLATFORM_ENV) target/release/servicemaker --project-home arango-test-service-nodejs --port 8000 --make-tar-gz $(PUSH_FLAG) --image-name arangodb/test-service-nodejs$(TEST_SERVICE_TAG)

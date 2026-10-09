@@ -18,11 +18,78 @@ parameters:
     type: boolean
     default: false
 
+# Images published to Docker Hub as multi-arch arangodb/<image>:latest
+# (per-arch tags arangodb/<image>:latest-<arch> are merged by push-images-manifest).
+x-published-images: &published-images "py12base py12cugraph py12torch node22base test-service test-service-nodejs"
+
+executors:
+  # Public copy of the multi-arch framework runner image (ships regctl).
+  framework-runner:
+    docker:
+      - image: public.ecr.aws/arangodb-ci/release/prd/framework/runner:v0.2.45
+    resource_class: arangodb/small-amd64
+
 commands:
+  setup_docker:
+    description: "Start dockerd in the job container (self-hosted privileged runner; no setup_remote_docker there)"
+    parameters:
+      storage-size:
+        type: string
+        default: "60G"
+    steps:
+      - run:
+          name: Set up Docker
+          command: |
+            # cimg images run as the circleci user (passwordless sudo); cimg/base:current
+            # has Docker's apt repo but no engine, cimg/rust ships dockerd already.
+            SUDO=""
+            if [ "$(id -u)" -ne 0 ]; then SUDO="sudo"; fi
+            export DEBIAN_FRONTEND=noninteractive
+            if ! command -v dockerd >/dev/null 2>&1; then
+              $SUDO apt-get update
+              $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce containerd.io docker-buildx-plugin
+            fi
+            if ! $SUDO docker info >/dev/null 2>&1; then
+              # The job container's root is overlayfs, and dockerd cannot stack
+              # overlay mounts on it ("mount source: overlay ... invalid argument").
+              # 1. Preferred: /var/lib/docker on a loop-mounted ext4 (native overlayfs).
+              # 2. Fallback: fuse-overlayfs. 3. Last resort: vfs (slow, disk-heavy).
+              DOCKERD_ARGS=""
+              $SUDO mkdir -p /var/lib/docker
+              if $SUDO truncate -s << parameters.storage-size >> /tmp/docker.img && $SUDO mkfs.ext4 -q -F /tmp/docker.img && $SUDO mount -o loop /tmp/docker.img /var/lib/docker; then
+                echo "dockerd storage: overlayfs on loop-mounted ext4"
+              elif $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y fuse-overlayfs && [ -e /dev/fuse ]; then
+                echo "dockerd storage: fuse-overlayfs"
+                DOCKERD_ARGS="--feature containerd-snapshotter=false --storage-driver=fuse-overlayfs"
+              else
+                echo "dockerd storage: vfs"
+                DOCKERD_ARGS="--feature containerd-snapshotter=false --storage-driver=vfs"
+              fi
+              $SUDO sh -c "dockerd --registry-mirror=https://mirror.gcr.io ${DOCKERD_ARGS} >/tmp/dockerd.log 2>&1 &"
+              for i in $(seq 1 30); do
+                $SUDO docker info >/dev/null 2>&1 && break
+                sleep 1
+              done
+              if [ -n "$SUDO" ] && [ -S /var/run/docker.sock ]; then
+                $SUDO chmod 666 /var/run/docker.sock
+              fi
+            fi
+            docker info || { $SUDO tail -50 /tmp/dockerd.log; exit 1; }
+
+  install_helm:
+    steps:
+      - run:
+          name: Install Helm
+          command: |
+            curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+            helm version
+
   build-and-scan-image:
     description: Build image (optional) and scan with trivy-scan orb
     parameters:
       image_name:
+        type: string
+      arch:
         type: string
       build_image:
         type: boolean
@@ -35,20 +102,27 @@ commands:
           condition: << parameters.build_image >>
           steps:
             - run:
-                name: Build arangodb/<< parameters.image_name >>
+                name: Build arangodb/<< parameters.image_name >> (linux/<< parameters.arch >>)
                 command: |
                   cd baseimages
                   IMAGE="<< parameters.image_name >>"
+                  PLATFORM="linux/<< parameters.arch >>"
                   SECURITY_REFRESH="${CIRCLE_BUILD_NUM:-$(date -u +%Y-%m-%d)}"
                   if [ "${IMAGE}" = "py12cugraph" ] || [ "${IMAGE}" = "py12torch" ]; then
-                    docker build --pull --build-arg "SECURITY_REFRESH=${SECURITY_REFRESH}" \
+                    docker build --platform "${PLATFORM}" --pull --build-arg "SECURITY_REFRESH=${SECURITY_REFRESH}" \
                       -f Dockerfile.py12base -t arangodb/py12base .
-                    docker build -f "Dockerfile.${IMAGE}" -t "arangodb/${IMAGE}" .
+                    docker build --platform "${PLATFORM}" -f "Dockerfile.${IMAGE}" -t "arangodb/${IMAGE}" .
                   else
-                    docker build --pull --build-arg "SECURITY_REFRESH=${SECURITY_REFRESH}" \
+                    docker build --platform "${PLATFORM}" --pull --build-arg "SECURITY_REFRESH=${SECURITY_REFRESH}" \
                       -f "Dockerfile.${IMAGE}" -t "arangodb/${IMAGE}" .
                   fi
                 no_output_timeout: << parameters.scan_timeout >>
+      - unless:
+          condition: << parameters.build_image >>
+          steps:
+            - run:
+                name: Pull arangodb/<< parameters.image_name >> (linux/<< parameters.arch >>)
+                command: docker pull --platform "linux/<< parameters.arch >>" "arangodb/<< parameters.image_name >>"
       - trivy-scan/scan:
           <<: *trivy-scan-settings
           image-ref: arangodb/<< parameters.image_name >>
@@ -57,34 +131,35 @@ jobs:
   build-and-test:
     docker:
       - image: cimg/rust:1.90
+    # Integration tests build and run images, so the job needs its own dockerd.
+    resource_class: arangodb/large-amd64-privileged
     steps:
       - checkout
-      
-      # Setup Docker
-      - setup_remote_docker:
-          docker_layer_caching: true
-      
+
+      - setup_docker:
+          storage-size: "150G"
+
       # Restore cargo cache
       - restore_cache:
           keys:
             - cargo-{{ checksum "Cargo.lock" }}
             - cargo-
-      
+
       # Check code compiles
       - run:
           name: Cargo check
           command: cargo check
-      
+
       # Run clippy linter
       - run:
           name: Cargo clippy
           command: cargo clippy --all-targets --all-features -- -D warnings
-      
+
       # Build the project in release mode
       - run:
           name: Build project (release mode)
           command: cargo build --release
-      
+
       # Save cargo cache
       - save_cache:
           paths:
@@ -92,41 +167,79 @@ jobs:
             - /home/circleci/.cargo/git
             - target
           key: cargo-{{ checksum "Cargo.lock" }}
-      
-      # Install Helm
-      - run:
-          name: Install Helm
-          command: |
-            curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-            helm version
-      
+
+      - install_helm
+
       # Run integration tests
       - run:
           name: Run integration tests
           command: cargo run --release --bin integration_tests -- --no-zip-test
+          no_output_timeout: 60m
+
+  # Branch-safe check that every published image builds and runs on one
+  # architecture. No Docker Hub credentials (no context), nothing is pushed.
+  verify-images:
+    parameters:
+      arch:
+        type: string
+    docker:
+      - image: cimg/rust:1.90
+    resource_class: arangodb/large-<< parameters.arch >>-privileged
+    steps:
+      - checkout
+      - setup_docker:
+          storage-size: "150G"
+      - run:
+          name: Build base images (linux/<< parameters.arch >>, no push)
+          command: |
+            cd baseimages
+            make build ARCH=<< parameters.arch >>
+          no_output_timeout: 60m
+      - run:
+          name: Smoke-test base images (linux/<< parameters.arch >>)
+          command: |
+            cd baseimages
+            ARCH=<< parameters.arch >> ./smoke.sh
+      - install_helm
+      - run:
+          name: Build test-service images (linux/<< parameters.arch >>, no push)
+          command: |
+            cargo build --release
+            make test-service test-service-nodejs ARCH=<< parameters.arch >> PUSH=0
+          no_output_timeout: 60m
+      - run:
+          name: Smoke-test test-service images (linux/<< parameters.arch >>)
+          command: ARCH=<< parameters.arch >> baseimages/smoke.sh test-service test-service-nodejs
+      - run:
+          name: Image sizes
+          when: always
+          command: docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}' | grep '^arangodb/' || true
 
   security-scan:
     parameters:
       image_name:
+        type: string
+      arch:
         type: string
       build_image:
         type: boolean
         default: true
     docker:
       # root required: trivy-scan orb installs the binary to /usr/local/bin
-      - image: cimg/base:stable
+      # cimg/base:current is multi-arch (cimg/base:stable is amd64 only).
+      - image: cimg/base:current
         user: root
+    resource_class: arangodb/large-<< parameters.arch >>-privileged
     steps:
       - checkout
-      
-      # Setup Docker
-      - setup_remote_docker:
-          docker_layer_caching: true
+      - setup_docker:
+          storage-size: "150G"
       - build-and-scan-image:
           image_name: << parameters.image_name >>
+          arch: << parameters.arch >>
           build_image: << parameters.build_image >>
       - run:
-          name: In-container scan arangodb/<< parameters.image_name >>
+          name: In-container scan arangodb/<< parameters.image_name >> (linux/<< parameters.arch >>)
           command: |
             chmod +x baseimages/scan_security.sh
             SCAN_SINGLE_IMAGE=<< parameters.image_name >> IN_CONTAINER_ONLY=1 baseimages/scan_security.sh
@@ -134,7 +247,8 @@ jobs:
 
   security-scan-notify:
     docker:
-      - image: cimg/base:stable
+      - image: cimg/base:current
+    resource_class: arangodb/small-amd64
     steps:
       - run:
           name: Check security scan results
@@ -143,7 +257,10 @@ jobs:
               echo "ERROR: CIRCLECI_TOKEN is not set (add circleci-token context to security-scan-notify)" >&2
               exit 1
             fi
-            SCAN_JOBS="py12base py12cugraph py12torch node22base test-service test-service-nodejs"
+            SCAN_JOBS=""
+            for image in py12base py12cugraph py12torch node22base test-service test-service-nodejs; do
+              SCAN_JOBS="${SCAN_JOBS} ${image}-amd64 ${image}-arm64"
+            done
             API_URL="https://circleci.com/api/v2/workflow/${CIRCLE_WORKFLOW_ID}/job"
             RESPONSE=$(curl -sf -H "Circle-Token: ${CIRCLECI_TOKEN}" "${API_URL}")
             FAILED_JOBS=""
@@ -165,50 +282,86 @@ jobs:
           channel: 'baseimagesecurityscan'
           template: basic_fail_1
 
+  # Builds and pushes arangodb/<image>:latest-<arch> for one architecture.
+  # Only runs in rebuild-base-images-manual (rebuild_base_images=true).
   rebuild-base-images:
+    parameters:
+      arch:
+        type: string
     docker:
       - image: cimg/rust:1.90
+    resource_class: arangodb/large-<< parameters.arch >>-privileged
     steps:
       - checkout
-      
-      # Setup Docker
-      - setup_remote_docker:
-          docker_layer_caching: true
-      
+
+      - setup_docker:
+          storage-size: "150G"
+
       # Login to Docker Hub
       - run:
           name: Login to Docker Hub
           command: |
             echo "$DOCKER_HUB_PASSWORD" | docker login -u "$DOCKER_HUB_USER" --password-stdin
-      
-      # Build base images
+
+      # Build base images (also tagged arangodb/<image> locally, so the
+      # derived images and test services build on this architecture's py12base)
       - run:
-          name: Build base images
+          name: Build base images (linux/<< parameters.arch >>)
           command: |
             cd baseimages
-            make build
+            make build ARCH=<< parameters.arch >>
           no_output_timeout: 60m
-      
+
+      - run:
+          name: Smoke-test base images (linux/<< parameters.arch >>)
+          command: |
+            cd baseimages
+            ARCH=<< parameters.arch >> ./smoke.sh
+
       # Push base images
       - run:
-          name: Push base images to Docker Hub
+          name: Push base images to Docker Hub (latest-<< parameters.arch >>)
           command: |
             cd baseimages
-            make push
-     
-      - run:
-          name: Install Helm
-          command: |
-            curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-            helm version
+            make push ARCH=<< parameters.arch >>
+
+      - install_helm
 
       # Build and push test-service images (servicemaker runs helm lint/package)
       - run:
-          name: Build and push test-service images
+          name: Build and push test-service images (latest-<< parameters.arch >>)
           command: |
             cargo build --release
-            make test-service test-service-nodejs
+            make test-service test-service-nodejs ARCH=<< parameters.arch >>
           no_output_timeout: 60m
+
+  # Merges arangodb/<image>:latest-{amd64,arm64} into the multi-arch arangodb/<image>:latest.
+  push-images-manifest:
+    executor: framework-runner
+    environment:
+      IMAGES: *published-images
+    steps:
+      - run:
+          name: Login to Docker Hub (regctl)
+          command: |
+            echo "$DOCKER_HUB_PASSWORD" | regctl registry login docker.io -u "$DOCKER_HUB_USER" --pass-stdin
+      - run:
+          name: Create multi-arch manifests arangodb/<image>:latest
+          command: |
+            set -euo pipefail
+            for i in ${IMAGES}; do
+              img="docker.io/arangodb/${i}"
+              echo "=== ${img}:latest"
+              regctl index create "${img}:latest" \
+                --ref "${img}:latest-amd64" --platform linux/amd64 \
+                --ref "${img}:latest-arm64" --platform linux/arm64
+              regctl manifest get "${img}:latest"
+              PLATFORMS=$(regctl manifest get "${img}:latest" --format '{{range .Manifests}}{{.Platform.OS}}/{{.Platform.Architecture}} {{end}}')
+              echo "${img}:latest platforms: ${PLATFORMS}"
+              case " ${PLATFORMS} " in *" linux/amd64 "*) ;; *) echo "linux/amd64 missing" >&2; exit 1;; esac
+              case " ${PLATFORMS} " in *" linux/arm64 "*) ;; *) echo "linux/arm64 missing" >&2; exit 1;; esac
+            done
+
 workflows:
   version: 2
   build-and-test:
@@ -221,50 +374,71 @@ workflows:
           filters:
             branches:
               ignore: []  # Run on all branches
-  
+
+  # Builds every published image on amd64 and arm64 and smoke-tests it.
+  # Runs on every push; pushes nothing (publishing is rebuild-base-images-manual).
+  verify-images:
+    when:
+      and:
+        - equal: [false, << pipeline.parameters.security_scan >>]
+        - equal: [false, << pipeline.parameters.rebuild_base_images >>]
+    jobs:
+      - verify-images:
+          name: verify-images-<< matrix.arch >>
+          matrix:
+            parameters:
+              arch: [amd64, arm64]
+
   security-scan-nightly:
     when: << pipeline.parameters.security_scan >>
     jobs:
-      # Parallel jobs
+      # Parallel jobs, one per image per architecture
       - security-scan:
-          name: py12base
-          image_name: py12base
+          name: << matrix.image_name >>-<< matrix.arch >>
           build_image: true
+          matrix:
+            parameters:
+              image_name: [py12base, py12cugraph, py12torch, node22base]
+              arch: [amd64, arm64]
       - security-scan:
-          name: py12cugraph
-          image_name: py12cugraph
-          build_image: true
-      - security-scan:
-          name: py12torch
-          image_name: py12torch
-          build_image: true
-      - security-scan:
-          name: node22base
-          image_name: node22base
-          build_image: true
-      - security-scan:
-          name: test-service
-          image_name: test-service
+          name: << matrix.image_name >>-<< matrix.arch >>
           build_image: false
-      - security-scan:
-          name: test-service-nodejs
-          image_name: test-service-nodejs
-          build_image: false
+          matrix:
+            parameters:
+              image_name: [test-service, test-service-nodejs]
+              arch: [amd64, arm64]
       - security-scan-notify:
           context:
             - slack-secrets
             - circleci-token
           # terminal = run after each scan finishes (success or failure)
           requires:
-            - py12base: terminal
-            - py12cugraph: terminal
-            - py12torch: terminal
-            - node22base: terminal
-            - test-service: terminal
-            - test-service-nodejs: terminal
-  
+            - py12base-amd64: terminal
+            - py12base-arm64: terminal
+            - py12cugraph-amd64: terminal
+            - py12cugraph-arm64: terminal
+            - py12torch-amd64: terminal
+            - py12torch-arm64: terminal
+            - node22base-amd64: terminal
+            - node22base-arm64: terminal
+            - test-service-amd64: terminal
+            - test-service-arm64: terminal
+            - test-service-nodejs-amd64: terminal
+            - test-service-nodejs-arm64: terminal
+
   rebuild-base-images-manual:
     when: << pipeline.parameters.rebuild_base_images >>
     jobs:
       - rebuild-base-images:
+          name: rebuild-base-images-amd64
+          arch: amd64
           context: docker-hub
+      - rebuild-base-images:
+          name: rebuild-base-images-arm64
+          arch: arm64
+          context: docker-hub
+      - push-images-manifest:
+          context: docker-hub
+          requires:
+            - rebuild-base-images-amd64
+            - rebuild-base-images-arm64
