@@ -26,7 +26,7 @@ executors:
   # Public copy of the multi-arch framework runner image (ships regctl).
   framework-runner:
     docker:
-      - image: public.ecr.aws/arangodb-ci/release/prd/framework/runner:v0.2.45
+      - image: public.ecr.aws/arangodb-ci/release/prd/framework/runner:v0.2.45@sha256:6f4f59e4084a249bf526acb369bb27ee267e9095374e74a0caaa21a431d09a21
     resource_class: arangodb/small-amd64
 
 commands:
