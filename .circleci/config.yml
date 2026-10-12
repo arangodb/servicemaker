@@ -26,7 +26,7 @@ executors:
   # Public copy of the multi-arch framework runner image (ships regctl).
   framework-runner:
     docker:
-      - image: public.ecr.aws/arangodb-ci/release/prd/framework/runner:v0.2.45
+      - image: public.ecr.aws/arangodb-ci/release/prd/framework/runner:v0.2.45@sha256:6f4f59e4084a249bf526acb369bb27ee267e9095374e74a0caaa21a431d09a21
     resource_class: arangodb/small-amd64
 
 commands:
@@ -47,7 +47,11 @@ commands:
             export DEBIAN_FRONTEND=noninteractive
             if ! command -v dockerd >/dev/null 2>&1; then
               $SUDO apt-get update
-              $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce containerd.io docker-buildx-plugin
+              $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-downgrades \
+                docker-ce=5:29.9.0-1~ubuntu.24.04~noble \
+                docker-ce-cli=5:29.9.0-1~ubuntu.24.04~noble \
+                containerd.io=2.4.1-2~ubuntu.24.04~noble \
+                docker-buildx-plugin=0.38.0-1~ubuntu.24.04~noble
             fi
             if ! $SUDO docker info >/dev/null 2>&1; then
               # The job container's root is overlayfs, and dockerd cannot stack
