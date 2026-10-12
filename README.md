@@ -126,6 +126,17 @@ cd baseimages
 make push
 ```
 
+All published images are multi-arch (`linux/amd64` and `linux/arm64`). Pass `ARCH` to build, smoke-test or push one architecture; the images are then also tagged `arangodb/<image>:latest-<arch>`:
+
+```bash
+cd baseimages
+make build ARCH=arm64   # docker build --platform linux/arm64
+make smoke ARCH=arm64   # run a minimal check inside each image
+make push ARCH=arm64    # push arangodb/<image>:latest-arm64
+```
+
+In CI, the `rebuild-base-images-manual` workflow (`rebuild_base_images=true`) builds and pushes `latest-amd64` and `latest-arm64` on self-hosted runners, then merges them into the multi-arch `latest` with `regctl index create`. The `verify-images` workflow builds and smoke-tests every image on both architectures on every push, without pushing.
+
 You can create additional base images for different Python versions or with different pre-installed libraries by:
 1. Creating a new Dockerfile in the `baseimages/` directory (e.g., `Dockerfile.py14base`)
 2. Adding the image name to `imagelist.txt`
