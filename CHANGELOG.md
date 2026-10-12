@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-12
+
 ### Changed
 
 - Base images (`py12base`, `py12torch`, `py12cugraph`, `node22base`) and the test-service images are built for `linux/amd64` and `linux/arm64` and published as multi-arch `latest` manifests (per-arch `latest-<arch>` tags merged with `regctl`)
@@ -116,7 +118,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Integration test suite with Helm deployment validation
 - CircleCI pipeline for building, testing, and scanning
 
-[unreleased]: https://github.com/arangodb/servicemaker/compare/v1.1.0...HEAD
+[unreleased]: https://github.com/arangodb/servicemaker/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/arangodb/servicemaker/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/arangodb/servicemaker/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/arangodb/servicemaker/compare/v0.9.3...v1.0.0
 [0.9.3]: https://github.com/arangodb/servicemaker/compare/v0.9.1...v0.9.3
