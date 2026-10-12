@@ -9,10 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Upgraded `bcrypt` to 6.0.0 in the Node.js base image: 5.1.1 shipped without its native binding (`bcrypt_lib.node` missing on amd64 and arm64); 6.0.0 bundles prebuilt bindings for both
-- Base images and test-service images are built for `linux/amd64` and `linux/arm64` and published as multi-arch `latest` manifests (per-arch `latest-<arch>` tags merged with `regctl`)
-- CircleCI jobs run on self-hosted `arangodb/*` runners; added the push-free `verify-images` workflow that builds and smoke-tests every image on both architectures
+- Base images (`py12base`, `py12torch`, `py12cugraph`, `node22base`) and the test-service images are built for `linux/amd64` and `linux/arm64` and published as multi-arch `latest` manifests (per-arch `latest-<arch>` tags merged with `regctl`)
+- CircleCI jobs run on self-hosted `arangodb/*` runners with their own Docker daemon (Docker Hub pulls via `mirror.gcr.io`); the framework runner image is pinned by tag and digest and the Docker packages by exact version
+- Added the push-free `verify-images` workflow that builds and smoke-tests every image on both architectures on every push; the nightly security scan runs per image and per architecture
 - `baseimages/build.sh`, `push.sh`, the base-image `Makefile` and the `test-service` targets take an optional `ARCH`; the `test-service` targets take `PUSH=0` to build without pushing
+- Upgraded `bcrypt` to 6.0.0 in the Node.js base image: 5.1.1 shipped without its native binding (`bcrypt_lib.node` missing on amd64 and arm64); 6.0.0 bundles prebuilt bindings for both
 
 ### Security
 
