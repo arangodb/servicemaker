@@ -126,7 +126,15 @@ commands:
           steps:
             - run:
                 name: Pull arangodb/<< parameters.image_name >> (linux/<< parameters.arch >>)
-                command: docker pull --platform "linux/<< parameters.arch >>" "arangodb/<< parameters.image_name >>"
+                command: |
+                  # Bypass mirror.gcr.io for our published images: its cached
+                  # latest can still point to the image from before a rebuild.
+                  SOURCE_IMAGE="registry-1.docker.io/arangodb/<< parameters.image_name >>:latest"
+                  LOCAL_IMAGE="arangodb/<< parameters.image_name >>:latest"
+                  docker pull --platform "linux/<< parameters.arch >>" "${SOURCE_IMAGE}"
+                  # Both Trivy and the in-container scan use this local tag.
+                  docker tag "${SOURCE_IMAGE}" "${LOCAL_IMAGE}"
+                  docker image inspect --format '{{.Id}} {{json .RepoDigests}}' "${LOCAL_IMAGE}"
       - trivy-scan/scan:
           <<: *trivy-scan-settings
           image-ref: arangodb/<< parameters.image_name >>
