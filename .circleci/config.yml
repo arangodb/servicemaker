@@ -229,10 +229,11 @@ jobs:
         type: boolean
         default: true
     docker:
-      # root required: trivy-scan orb installs the binary to /usr/local/bin
+      # Keep cimg's default circleci user: a root override prevents the task
+      # agent from starting on our self-hosted privileged runners (EPERM).
+      # setup_docker uses sudo; trivy-scan installs to a user-writable directory.
       # cimg/base:current is multi-arch (cimg/base:stable is amd64 only).
       - image: cimg/base:current
-        user: root
     resource_class: arangodb/large-<< parameters.arch >>-privileged
     steps:
       - checkout
