@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Upgrade `body-parser` to 1.20.9 (CVE-2026-111181) and `undici` to 6.29.1 (CVE-2026-109869) in the Node.js base image and test service.
+- Upgrade `joi` to 18.3.1 (CVE-2026-118772) in the Node.js base image and test service.
 ## [1.2.0] - 2026-10-12
 
 ### Changed

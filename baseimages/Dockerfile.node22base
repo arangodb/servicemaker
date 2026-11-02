@@ -96,7 +96,7 @@ RUN npm install \
     # HTTP clients
     axios@1.20.0 \
     # Validation
-    joi@17.13.7 \
+    joi@18.3.1 \
     # Logging
     winston@3.15.0 \
     # Async utilities
