@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The `trivy-scan` orb floats on `@1` instead of the exact `1.6.0` pin, so each validated 1.x release applies on the next pipeline without a bump PR.
+
 ### Security
 
 - Upgrade `body-parser` to 1.20.9 (CVE-2026-111181) and `undici` to 6.29.1 (CVE-2026-109869) in the Node.js base image and test service.
