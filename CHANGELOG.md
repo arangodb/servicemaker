@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Base-image entrypoint: the `ARCHIVE_FILE` download sends the pod's ArangoPermissionToken (the file named by `ARANGO_TOKEN`, mounted by the operator) as a Bearer token, because the File Manager checks `ai:filemanager.package.read` on `ai:service:arango-user-defined` for package downloads (AIS-1472). Without a token the download stays unauthenticated as before. The download now fails the start with a clear message on an HTTP error instead of extracting the error page as the archive.
 - The `trivy-scan` orb floats on `@1` instead of the exact `1.6.0` pin, so each validated 1.x release applies on the next pipeline without a bump PR.
 
 ### Security
