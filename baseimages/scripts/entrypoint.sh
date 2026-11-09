@@ -9,14 +9,32 @@ if test -e projectURL ; then
   curl -o project.tar.gz "$(cat projectURL)"
 fi
 
-# Try to download project archive from ARCHIVE_FILE env variable:
+# Try to download project archive from ARCHIVE_FILE env variable.
+# On the platform the archive is a File Manager package, and the File Manager
+# checks Platform RBAC on the download (ai:filemanager.package.read on
+# ai:service:arango-user-defined). The operator mounts the pod's
+# ArangoPermissionToken and puts its path in ARANGO_TOKEN; it is sent as a
+# Bearer token. Without a token (local run, cluster without the token) the
+# download is unauthenticated, as before. The token is never printed.
 echo "ARCHIVE_FILE=${ARCHIVE_FILE:-<not set>}"
 if [ -n "$ARCHIVE_FILE" ] ; then
+  AUTH_HEADER=()
+  if [ -n "${ARANGO_TOKEN:-}" ] && [ -r "$ARANGO_TOKEN" ] ; then
+    AUTH_HEADER=(-H "Authorization: Bearer $(cat "$ARANGO_TOKEN")")
+    echo "Sending the pod's ArangoPermissionToken with the download"
+  else
+    echo "No ArangoPermissionToken found (ARANGO_TOKEN unset or unreadable); downloading without a token"
+  fi
   echo "Downloading project.tar.gz from $ARCHIVE_FILE ..."
-  curl -o project.tar.gz "$ARCHIVE_FILE"
-  echo "curl exit code: $?"
+  # -f: an HTTP error (401, 403, 404, ...) fails the download instead of saving
+  # the error page as project.tar.gz; -sS: no progress bar, errors still shown.
+  curl -fsS "${AUTH_HEADER[@]}" -o project.tar.gz "$ARCHIVE_FILE" || {
+    rc=$?
+    echo "Download of $ARCHIVE_FILE failed (curl exit code $rc)"
+    exit "$rc"
+  }
   echo "Downloaded file info:"
-  ls -lh project.tar.gz 2>/dev/null || echo "project.tar.gz not found after download"
+  ls -lh project.tar.gz
 fi
 
 # Try to unzip the project zip, if the `project.tar.gz` file is there:
