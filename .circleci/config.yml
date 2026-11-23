@@ -405,20 +405,15 @@ workflows:
   security-scan-nightly:
     when: << pipeline.parameters.security_scan >>
     jobs:
-      # Parallel jobs, one per image per architecture
-      - security-scan:
-          name: << matrix.image_name >>-<< matrix.arch >>
-          build_image: true
-          matrix:
-            parameters:
-              image_name: [py12base, py12cugraph, py12torch, node22base]
-              arch: [amd64, arm64]
+      # Parallel jobs, one per image per architecture. Each scans the published
+      # :latest from Docker Hub, which is what services build on; a fresh rebuild
+      # would pick up fixes the published image does not have.
       - security-scan:
           name: << matrix.image_name >>-<< matrix.arch >>
           build_image: false
           matrix:
             parameters:
-              image_name: [test-service, test-service-nodejs]
+              image_name: [py12base, py12cugraph, py12torch, node22base, test-service, test-service-nodejs]
               arch: [amd64, arm64]
       - security-scan-notify:
           context:
